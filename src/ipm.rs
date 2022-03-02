@@ -183,17 +183,16 @@ pub fn nlp(
     // check tolerance
     let mut f0 = f.clone();
     let mut l_step: f64 = if opt.step_control {
-        f + lam.dot(&g) + mu.dot(&(&h + &z)) - gamma * log_sum(z.view())
+        f + lam.dot(&g) + mu.dot(&(&h + &z)) - gamma * z.ln_sum()
     } else {
         0.0
     };
     let mut l_x = df + (&dg.view() * &lam.view()) + (&dh.view() * &mu.view());
-    let maxh: f64 = max(h.view());
+    let maxh: f64 = h.maximum();
 
-    let feascond =
-        norm_inf(g.view()).max(maxh) / (1.0 + norm_inf(x.view()).max(norm_inf(z.view())));
-    let gradcond = norm_inf(l_x.view()) / (1.0 + norm_inf(lam.view()).max(norm_inf(mu.view())));
-    let compcond = z.dot(&mu.view()) / (1.0 + norm_inf(x.view()));
+    let feascond = g.norm_inf().max(maxh) / (1.0 + x.norm_inf().max(z.norm_inf()));
+    let gradcond = l_x.norm_inf() / (1.0 + lam.norm_inf().max(mu.norm_inf()));
+    let compcond = z.dot(&mu.view()) / (1.0 + x.norm_inf());
     let costcond = (f - f0).abs() / (1.0 + f0.abs());
 
     let mut iterations = 0;
@@ -275,7 +274,7 @@ pub fn nlp(
             solver.solve(a_mat.view(), b.view_mut())?;
             b
         };
-        if dxdlam.iter().any(|v| v.is_nan()) || norm(dxdlam.view()) > max_step_size {
+        if dxdlam.iter().any(|v| v.is_nan()) || dxdlam.norm() > max_step_size {
             failed = true;
             break;
         }
@@ -318,12 +317,10 @@ pub fn nlp(
 
             // check tolerance
             let l_x1 = df1 + (&dg1.view() * &lam.view()) + (&dh1.view() * &mu.view());
-            let maxh1: f64 = max(h1.view());
+            let maxh1: f64 = h1.maximum();
 
-            let feascond1 = norm_inf(g1.view()).max(maxh1)
-                / (1.0 + norm_inf(x1.view()).max(norm_inf(z.view())));
-            let gradcond1 =
-                norm_inf(l_x1.view()) / (1.0 + norm_inf(lam.view()).max(norm_inf(mu.view())));
+            let feascond1 = g1.norm_inf().max(maxh1) / (1.0 + x1.norm_inf().max(z.norm_inf()));
+            let gradcond1 = l_x1.norm_inf() / (1.0 + lam.norm_inf().max(mu.norm_inf()));
 
             feascond1 > feascond && gradcond1 > gradcond
         } else {
@@ -346,9 +343,9 @@ pub fn nlp(
                     let g1 = (&ae_mat.view() * &x1.view()) - &be; // equality constraints
                     (h1, g1)
                 };
-                let l1 = f1 + lam.dot(&g1) + mu.dot(&(&h1 + &z)) - gamma * log_sum(z.view());
+                let l1 = f1 + lam.dot(&g1) + mu.dot(&(&h1 + &z)) - gamma * z.ln_sum();
                 if opt.verbose {
-                    print!("{} {}", -(j as isize), norm(dx1.view()));
+                    print!("{} {}", -(j as isize), dx1.norm());
                 }
                 let rho =
                     (l1 - l_step) / (l_x.dot(&dx1) + 0.5 * dx1.dot(&(&l_xx.view() * &dx1.view())));
@@ -374,7 +371,7 @@ pub fn nlp(
             1.0
         } else {
             // alphap = min( [xi * min(z(k) ./ -dz(k)) 1] );
-            (xi * min(&k.iter().map(|&i| z[i] / -dz[i]).collect::<Vec<f64>>())).min(1.0)
+            (xi * (&k.iter().map(|&i| z[i] / -dz[i]).collect::<Vec<f64>>()).minimum()).min(1.0)
         };
         // k = find(dmu < 0);
         let k = dmu
@@ -386,7 +383,7 @@ pub fn nlp(
             1.0
         } else {
             // alphad = min( [xi * min(mu(k) ./ -dmu(k)) 1] );
-            (xi * min(&k.iter().map(|&i| mu[i] / -dmu[i]).collect::<Vec<f64>>())).min(1.0)
+            (xi * (&k.iter().map(|&i| mu[i] / -dmu[i]).collect::<Vec<f64>>()).minimum()).min(1.0)
         };
         x = x + alphap * &dx;
         z = z + alphap * &dz;
@@ -424,12 +421,11 @@ pub fn nlp(
             };
 
         l_x = df + (&dg.view() * &lam.view()) + (&dh.view() * &mu.view());
-        let maxh: f64 = max(h.view());
+        let maxh: f64 = h.maximum();
 
-        let feascond =
-            norm_inf(g.view()).max(maxh) / (1.0 + norm_inf(x.view()).max(norm_inf(z.view())));
-        let gradcond = norm_inf(l_x.view()) / (1.0 + norm_inf(lam.view()).max(norm_inf(mu.view())));
-        let compcond = z.dot(&mu.view()) / (1.0 + norm_inf(x.view()));
+        let feascond = g.norm_inf().max(maxh) / (1.0 + x.norm_inf().max(z.norm_inf()));
+        let gradcond = l_x.norm_inf() / (1.0 + lam.norm_inf().max(mu.norm_inf()));
+        let compcond = z.dot(&mu.view()) / (1.0 + x.norm_inf());
         let costcond = (f - f0).abs() / (1.0 + f0.abs());
 
         if let Some(progress) = progress.as_ref() {
@@ -440,7 +436,7 @@ pub fn nlp(
                 compcond,
                 costcond,
                 gamma,
-                norm(dx.view()),
+                dx.norm(),
                 f / opt.cost_mult,
                 alphap,
                 alphad,
@@ -468,7 +464,7 @@ pub fn nlp(
 
             f0 = f;
             if opt.step_control {
-                l_step = f + lam.dot(&g) + mu.dot(&(&h + &z)) - gamma * log_sum(z.view())
+                l_step = f + lam.dot(&g) + mu.dot(&(&h + &z)) - gamma * z.ln_sum()
             }
         }
     }
@@ -546,28 +542,4 @@ pub fn nlp(
     };
 
     Ok((x, f, converged, iterations, lambda))
-}
-
-// Returns the 2-norm (Euclidean) of a.
-fn norm(a: ArrayView1<f64>) -> f64 {
-    a.iter().map(|&v| v * v).sum::<f64>().sqrt()
-}
-
-fn norm_inf(a: ArrayView1<f64>) -> f64 {
-    max(a).abs()
-}
-
-fn max(a: ArrayView1<f64>) -> f64 {
-    *a.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap()
-}
-
-// fn min(a: ArrayView1<f64>) -> f64 {
-fn min(a: &[f64]) -> f64 {
-    *a.into_iter()
-        .min_by(|a, b| a.partial_cmp(b).unwrap())
-        .unwrap()
-}
-
-fn log_sum(a: ArrayView1<f64>) -> f64 {
-    a.iter().map(|v| v.ln()).sum::<f64>()
 }

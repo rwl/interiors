@@ -34,7 +34,7 @@ impl ObjectiveFunction for QuadraticObjectiveFunction {
 ///
 ///       l <= A*x <= u       (linear constraints)
 ///       xmin <= x <= xmax   (variable bounds)
-fn qp(
+pub fn qp(
     h_mat: CsMatView<f64>,
     c: Option<ArrayView1<f64>>,
     a_mat: Option<CsMatView<f64>>,
