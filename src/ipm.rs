@@ -1,135 +1,9 @@
-use ndarray::{concatenate, s, Array1, ArrayView1, ArrayViewMut1, Axis};
+use crate::common::*;
+use crate::traits::*;
+use ndarray::{concatenate, s, Array1, ArrayView1, Axis};
 use sprs::{hstack, vstack, CsMat, CsMatBase, CsMatView, TriMat};
 
 const EPS: f64 = f64::EPSILON;
-
-/// Lagrange and Kuhn-Tucker multipliers on the constraints.
-pub struct Lambda {
-    /// Multipliers on the equality constraints.
-    eq_non_lin: Array1<f64>,
-    /// Multipliers on the inequality constraints.
-    ineq_non_lin: Array1<f64>,
-    /// Lower (left-hand) limit on linear constraints.
-    mu_l: Array1<f64>,
-    /// Upper (right-hand) limit on linear constraints.
-    mu_u: Array1<f64>,
-    /// Lower bound on optimization variables.
-    lower: Array1<f64>,
-    /// Upper bound on optimization variables.
-    upper: Array1<f64>,
-}
-
-impl Default for Lambda {
-    fn default() -> Self {
-        Self {
-            eq_non_lin: Array1::default(0),
-            ineq_non_lin: Array1::default(0),
-            mu_l: Array1::default(0),
-            mu_u: Array1::default(0),
-            lower: Array1::default(0),
-            upper: Array1::default(0),
-        }
-    }
-}
-
-/// ObjectiveFn evaluates the objective function, its gradients
-/// and Hessian for a given value of x.
-pub type ObjectiveFn =
-    fn(x: ArrayView1<f64>, hessian: bool) -> (f64, Array1<f64>, Option<CsMat<f64>>);
-/// ConstraintFn evaluates the optional nonlinear constraints
-/// and their gradients for a given value of x.
-pub type ConstraintFn =
-    fn(x: ArrayView1<f64>, gradients: bool) -> (Array1<f64>, Array1<f64>, CsMat<f64>, CsMat<f64>);
-/// HessianFn computes the Hessian of the Lagrangian for given values
-/// of x, lambda and mu, where lambda and mu are the multipliers on the
-/// equality and inequality constraints, respectively.
-pub type HessianFn = fn(x: ArrayView1<f64>, lam: &Lambda, cost_mult: f64) -> CsMat<f64>;
-
-pub type LinearSolver =
-    fn(a_mat: CsMatView<f64>, b: ArrayViewMut1<f64>) -> Result<Array1<f64>, String>;
-
-/// Progress is called on each iteration of the solver with the current
-/// iteration number, feasibility condition, gradient condition,
-/// complementarity condition, cost condition, barrier coefficient,
-/// step size, objective function value and the two update parameters.
-pub type ProgressFn = fn(
-    i: usize,
-    feas_cond: f64,
-    grad_cond: f64,
-    comp_cond: f64,
-    cost_cond: f64,
-    gamma: f64,
-    step_size: f64,
-    obj: f64,
-    alpha_p: f64,
-    alpha_d: f64,
-);
-
-pub struct Options {
-    /// Controls level of progress output displayed.
-    pub verbose: bool,
-    /// Termination tolerance for feasibility condition.
-    pub feas_tol: f64,
-    /// Termination tolerance for gradient condition.
-    pub grad_tol: f64,
-    /// Termination tolerance for complementarity condition.
-    pub comp_tol: f64,
-    /// Termination tolerance for cost condition.
-    pub cost_tol: f64,
-    /// Maximum number of iterations.
-    pub max_it: usize,
-    /// Set to enable step-size control.
-    pub step_control: bool,
-    /// Maximum number of step-size reductions if step-control is on.
-    pub max_red: usize,
-    /// Cost multiplier used to scale the objective function for improved
-    /// conditioning.
-    ///
-    /// Note: This value is also passed as the 3rd argument to the Hessian
-    /// evaluation function so that it can appropriately scale the objective
-    /// function term in the Hessian of the Lagrangian.
-    pub cost_mult: f64,
-    /// Constant used in alpha updates.
-    pub xi: f64,
-    /// Centering parameter.
-    pub sigma: f64,
-    /// Used to initialize slack variables.
-    pub z0: f64,
-    /// Exits if either alpha parameter becomes smaller than this value.
-    pub alpha_min: f64,
-    /// Lower bound on rho_t.
-    pub rho_min: f64,
-    /// Upper bound on rho_t.
-    pub rho_max: f64,
-    /// KT multipliers smaller than this value for non-binding constraints are forced to zero.
-    pub mu_threshold: f64,
-    /// Exits if the 2-norm of the reduced Newton step exceeds this value.
-    pub max_step_size: f64,
-}
-
-impl Default for Options {
-    fn default() -> Self {
-        Self {
-            verbose: false,
-            feas_tol: 1e-6,
-            grad_tol: 1e-6,
-            comp_tol: 1e-6,
-            cost_tol: 1e-6,
-            max_it: 150,
-            step_control: false,
-            max_red: 20,
-            cost_mult: 1.0,
-            xi: 0.99995,
-            sigma: 0.1,
-            z0: 1.0,
-            alpha_min: 1e-8,
-            rho_min: 0.95,
-            rho_max: 1.05,
-            mu_threshold: 1e-5,
-            max_step_size: 1e10,
-        }
-    }
-}
 
 /// Primal-dual interior point method for NLP (nonlinear programming).
 /// Minimize a function F(x) beginning from a starting point x0, subject
@@ -145,22 +19,24 @@ impl Default for Options {
 ///       l <= A*x <= u       (linear constraints)
 ///       xmin <= x <= xmax   (variable bounds)
 pub fn nlp(
-    f_fn: ObjectiveFn,
-    x0: Array1<f64>,
-    a_mat: Option<CsMat<f64>>,
-    l: Option<Array1<f64>>,
-    u: Option<Array1<f64>>,
-    xmin: Option<Array1<f64>>,
-    xmax: Option<Array1<f64>>,
-    gh_fn: Option<ConstraintFn>,
-    hess_fn: HessianFn,
-    linsolve: LinearSolver,
+    f_fn: &dyn ObjectiveFunction,
+    x0: ArrayView1<f64>,
+    a_mat: Option<CsMatView<f64>>,
+    l: Option<ArrayView1<f64>>,
+    u: Option<ArrayView1<f64>>,
+    xmin: Option<ArrayView1<f64>>,
+    xmax: Option<ArrayView1<f64>>,
+    nonlinear: Option<&dyn NonlinearConstraint>,
+    solver: &dyn LinearSolver,
     opt: Option<Options>,
-    progress_fn: Option<ProgressFn>,
+    progress: Option<&dyn ProgressMonitor>,
 ) -> Result<(Array1<f64>, f64, bool, usize, Lambda), String> {
     let nx = x0.len();
 
-    let a_mat = a_mat.unwrap_or(CsMat::zero((0, nx)));
+    let a_mat = match a_mat {
+        Some(a_mat) => a_mat.to_owned(),
+        None => CsMat::<f64>::zero((0, nx)),
+    };
     let a_mat = if l.is_some()
         && u.is_some()
         && l.as_ref().unwrap().iter().all(|v| v.is_infinite())
@@ -174,14 +50,26 @@ pub fn nlp(
     let na = a_mat.rows(); // number of original linear constraints
 
     // By default, linear inequalities are ...
-    let u = u.unwrap_or(Array1::from_elem(na, f64::INFINITY)); // ... unbounded above and ...
-    let l = l.unwrap_or(Array1::from_elem(na, f64::NEG_INFINITY)); // ... unbounded below.
+    let u = match u {
+        Some(u) => u.to_owned(),
+        None => Array1::from_elem(na, f64::INFINITY), // ... unbounded above and ...
+    };
+    let l = match l {
+        Some(l) => l.to_owned(),
+        None => Array1::from_elem(na, f64::NEG_INFINITY), // ... unbounded below.
+    };
 
     // By default, optimization variables are ...
-    let xmin = xmin.unwrap_or(Array1::from_elem(nx, f64::NEG_INFINITY)); // ... unbounded below and ...
-    let xmax = xmax.unwrap_or(Array1::from_elem(nx, f64::INFINITY)); // ... unbounded above.
+    let xmin = match xmin {
+        Some(xmin) => xmin.to_owned(),
+        None => Array1::from_elem(nx, f64::NEG_INFINITY), // ... unbounded below and ...
+    };
+    let xmax = match xmax {
+        Some(xmax) => xmax.to_owned(),
+        None => Array1::from_elem(nx, f64::INFINITY), // ... unbounded above.
+    };
 
-    let nonlinear = gh_fn.is_some(); // nonlinear constraints present
+    // let nonlinear = gh_fn.is_some(); // nonlinear constraints present
     let (gn, hn) = (vec![0.0; 0], vec![0.0; 0]);
 
     // Set up problem
@@ -238,32 +126,33 @@ pub fn nlp(
     );
 
     // Evaluate cost f(x0) and constraints g(x0), h(x0)
-    let mut x = x0;
+    let mut x = x0.to_owned();
 
-    let (f, df, _) = f_fn(x.view(), false);
+    let (f, df, _) = f_fn.f(x.view(), false);
 
     let f = f * opt.cost_mult;
     let df: Array1<f64> = df * opt.cost_mult;
 
-    let (h, g, dh, dg): (Array1<f64>, Array1<f64>, CsMat<f64>, CsMat<f64>) = if nonlinear {
-        let (hn, gn, dhn, dgn) = gh_fn.unwrap()(x.view(), true); // nonlinear constraints
+    let (h, g, dh, dg): (Array1<f64>, Array1<f64>, CsMat<f64>, CsMat<f64>) =
+        if let Some(gh_fn) = nonlinear {
+            let (hn, gn, dhn, dgn) = gh_fn.gh(x.view(), true); // nonlinear constraints
 
-        let h: Array1<f64> = concatenate![Axis(1), hn, (&ai_mat.view() * &x.view()) - &bi]; // inequality constraints
-        let g: Array1<f64> = concatenate![Axis(1), gn, (&ae_mat.view() * &x.view()) - &be]; // equality constraints
+            let h: Array1<f64> = concatenate![Axis(1), hn, (&ai_mat.view() * &x.view()) - &bi]; // inequality constraints
+            let g: Array1<f64> = concatenate![Axis(1), gn, (&ae_mat.view() * &x.view()) - &be]; // equality constraints
 
-        let dh: CsMat<f64> = hstack(&[dhn.view(), ai_mat.transpose_view()]); // 1st derivative of inequalities
-        let dg: CsMat<f64> = hstack(&[dgn.view(), ae_mat.transpose_view()]); // 1st derivative of equalities
+            let dh: CsMat<f64> = hstack(&[dhn.view(), ai_mat.transpose_view()]); // 1st derivative of inequalities
+            let dg: CsMat<f64> = hstack(&[dgn.view(), ae_mat.transpose_view()]); // 1st derivative of equalities
 
-        (h, g, dh, dg)
-    } else {
-        let h = (&ai_mat.view() * &x.view()) - &bi; // inequality constraints
-        let g = (&ae_mat.view() * &x.view()) - &be; // equality constraints
+            (h, g, dh, dg)
+        } else {
+            let h = (&ai_mat.view() * &x.view()) - &bi; // inequality constraints
+            let g = (&ae_mat.view() * &x.view()) - &be; // equality constraints
 
-        let dh = ai_mat.view().transpose_into().to_csr(); // 1st derivative of inequalities
-        let dg = ae_mat.view().transpose_into().to_csr(); // 1st derivative of equalities
+            let dh = ai_mat.view().transpose_into().to_csr(); // 1st derivative of inequalities
+            let dg = ae_mat.view().transpose_into().to_csr(); // 1st derivative of equalities
 
-        (h, g, dh, dg)
-    };
+            (h, g, dh, dg)
+        };
 
     // Grab some dimensions.
     let neq = g.len(); // number of equality constraints
@@ -308,8 +197,8 @@ pub fn nlp(
     let costcond = (f - f0).abs() / (1.0 + f0.abs());
 
     let mut iterations = 0;
-    if let Some(progress) = progress_fn {
-        progress(
+    if let Some(progress) = progress.as_ref() {
+        progress.update(
             iterations,
             feascond,
             gradcond,
@@ -339,10 +228,10 @@ pub fn nlp(
             ineq_non_lin: (0..niqnln).map(|i| mu[i]).collect(),
             ..Default::default()
         };
-        let l_xx = if nonlinear {
-            hess_fn(x.view(), &lambda, opt.cost_mult)
+        let l_xx = if let Some(hess_fn) = nonlinear {
+            hess_fn.hess(x.view(), &lambda, opt.cost_mult)
         } else {
-            let (_, _, mut d2f) = f_fn(x.view(), true); // cost
+            let (_, _, mut d2f) = f_fn.f(x.view(), true); // cost
             d2f.as_mut().unwrap().scale(opt.cost_mult);
             d2f.unwrap()
         };
@@ -383,7 +272,7 @@ pub fn nlp(
                 ]
                 .concat(),
             );
-            linsolve(a_mat.view(), b.view_mut())?;
+            solver.solve(a_mat.view(), b.view_mut())?;
             b
         };
         if dxdlam.iter().any(|v| v.is_nan()) || norm(dxdlam.view()) > max_step_size {
@@ -400,13 +289,13 @@ pub fn nlp(
             let x1 = &x + &dx;
 
             // Evaluate cost, constraints, derivatives at x1.
-            let (f1, df1, _) = f_fn(x1.view(), false); // cost
+            let (f1, df1, _) = f_fn.f(x1.view(), false); // cost
             let f1 = f1 * opt.cost_mult;
             let df1 = df1 * opt.cost_mult;
 
             let (h1, g1, dh1, dg1): (Array1<f64>, Array1<f64>, CsMat<f64>, CsMat<f64>) =
-                if nonlinear {
-                    let (hn1, gn1, dhn1, dgn1) = gh_fn.unwrap()(x1.view(), true); // nonlinear constraints
+                if let Some(gh_fn) = nonlinear {
+                    let (hn1, gn1, dhn1, dgn1) = gh_fn.gh(x1.view(), true); // nonlinear constraints
 
                     let h1: Array1<f64> =
                         concatenate![Axis(1), hn1, (&ai_mat.view() * &x1.view()) - &bi]; // inequality constraints
@@ -445,10 +334,10 @@ pub fn nlp(
             for j in 0..opt.max_red {
                 let dx1 = alpha * &dx;
                 let x1 = &x + &dx1;
-                let (f1, _, _) = f_fn(x1.view(), false); // cost
+                let (f1, _, _) = f_fn.f(x1.view(), false); // cost
                 let f1 = f1 * opt.cost_mult;
-                let (h1, g1) = if nonlinear {
-                    let (hn1, gn1, _, _) = gh_fn.unwrap()(x1.view(), false); // nonlinear constraints
+                let (h1, g1) = if let Some(gh_fn) = nonlinear {
+                    let (hn1, gn1, _, _) = gh_fn.gh(x1.view(), false); // nonlinear constraints
                     let h1 = concatenate![Axis(1), hn1, (&ai_mat.view() * &x1.view()) - &bi]; // inequality constraints
                     let g1 = concatenate![Axis(1), gn1, (&ae_mat.view() * &x1.view()) - &be]; // equality constraints
                     (h1, g1)
@@ -508,30 +397,31 @@ pub fn nlp(
         }
 
         // evaluate cost, constraints, derivatives
-        let (f, df, _) = f_fn(x.view(), false); // cost
+        let (f, df, _) = f_fn.f(x.view(), false); // cost
         let f = f * opt.cost_mult;
         let df = df * opt.cost_mult;
 
-        let (h, g, dh, dg): (Array1<f64>, Array1<f64>, CsMat<f64>, CsMat<f64>) = if nonlinear {
-            let (hn, gn, dhn, dgn) = gh_fn.unwrap()(x.view(), true); // nonlinear constraints
+        let (h, g, dh, dg): (Array1<f64>, Array1<f64>, CsMat<f64>, CsMat<f64>) =
+            if let Some(gh_fn) = nonlinear {
+                let (hn, gn, dhn, dgn) = gh_fn.gh(x.view(), true); // nonlinear constraints
 
-            let h: Array1<f64> = concatenate![Axis(1), hn, (&ai_mat.view() * &x.view()) - &bi]; // inequality constraints
-            let g: Array1<f64> = concatenate![Axis(1), gn, (&ae_mat.view() * &x.view()) - &be]; // equality constraints
+                let h: Array1<f64> = concatenate![Axis(1), hn, (&ai_mat.view() * &x.view()) - &bi]; // inequality constraints
+                let g: Array1<f64> = concatenate![Axis(1), gn, (&ae_mat.view() * &x.view()) - &be]; // equality constraints
 
-            let dh: CsMat<f64> = hstack(&[dhn.view(), ai_mat.transpose_view()]); // 1st derivative of inequalities
-            let dg: CsMat<f64> = hstack(&[dgn.view(), ae_mat.transpose_view()]); // 1st derivative of equalities
+                let dh: CsMat<f64> = hstack(&[dhn.view(), ai_mat.transpose_view()]); // 1st derivative of inequalities
+                let dg: CsMat<f64> = hstack(&[dgn.view(), ae_mat.transpose_view()]); // 1st derivative of equalities
 
-            (h, g, dh, dg)
-        } else {
-            let h = (&ai_mat.view() * &x.view()) - &bi; // inequality constraints
-            let g = (&ae_mat.view() * &x.view()) - &be; // equality constraints
+                (h, g, dh, dg)
+            } else {
+                let h = (&ai_mat.view() * &x.view()) - &bi; // inequality constraints
+                let g = (&ae_mat.view() * &x.view()) - &be; // equality constraints
 
-            // 1st derivatives are constant, still dh = Ai', dg = Ae' TODO
-            let dh = ai_mat.view().transpose_into().to_csr(); // 1st derivative of inequalities
-            let dg = ae_mat.view().transpose_into().to_csr(); // 1st derivative of equalities
+                // 1st derivatives are constant, still dh = Ai', dg = Ae' TODO
+                let dh = ai_mat.view().transpose_into().to_csr(); // 1st derivative of inequalities
+                let dg = ae_mat.view().transpose_into().to_csr(); // 1st derivative of equalities
 
-            (h, g, dh, dg)
-        };
+                (h, g, dh, dg)
+            };
 
         l_x = df + (&dg.view() * &lam.view()) + (&dh.view() * &mu.view());
         let maxh: f64 = max(h.view());
@@ -542,8 +432,8 @@ pub fn nlp(
         let compcond = z.dot(&mu.view()) / (1.0 + norm_inf(x.view()));
         let costcond = (f - f0).abs() / (1.0 + f0.abs());
 
-        if let Some(progress) = progress_fn {
-            progress(
+        if let Some(progress) = progress.as_ref() {
+            progress.update(
                 iterations,
                 feascond,
                 gradcond,
