@@ -71,7 +71,7 @@ pub fn qp(
         xmin,
         xmax,
         None,
-        linsolve,
+        Some(linsolve),
         opt,
         progress,
     )

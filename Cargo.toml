@@ -7,3 +7,5 @@ edition = "2021"
 [dependencies]
 sprs = "0.11.0"
 ndarray = "0.15.4"
+rlu = {path = "../rlu"}
+amd = {path = "../amd_order"}

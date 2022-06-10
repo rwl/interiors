@@ -11,13 +11,18 @@ pub trait NonlinearConstraint {
         &self,
         x: ArrayView1<f64>,
         gradients: bool,
-    ) -> (Array1<f64>, Array1<f64>, CsMat<f64>, CsMat<f64>);
+    ) -> (
+        Array1<f64>,
+        Array1<f64>,
+        Option<CsMat<f64>>,
+        Option<CsMat<f64>>,
+    );
 
     fn hess(&self, x: ArrayView1<f64>, lam: &Lambda, cost_mult: f64) -> CsMat<f64>;
 }
 
 pub trait LinearSolver {
-    fn solve(&self, a_mat: CsMatView<f64>, b: ArrayViewMut1<f64>) -> Result<Array1<f64>, String>;
+    fn solve(&self, a_mat: CsMatView<f64>, b: ArrayViewMut1<f64>) -> Result<(), String>;
 }
 
 /// Called on each iteration of the solver with the current

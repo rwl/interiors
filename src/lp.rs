@@ -77,7 +77,7 @@ pub fn lp(
         xmin,
         xmax,
         None,
-        linsolve,
+        Some(linsolve),
         opt,
         progress,
     )

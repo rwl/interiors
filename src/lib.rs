@@ -1,5 +1,6 @@
 mod common;
 mod ipm;
+mod linsol;
 mod lp;
 mod qp;
 #[cfg(test)]

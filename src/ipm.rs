@@ -1,9 +1,8 @@
 use crate::common::*;
+use crate::linsol::RLUSolver;
 use crate::traits::*;
 use ndarray::{concatenate, s, Array1, ArrayView1, Axis};
 use sprs::{hstack, vstack, CsMat, CsMatBase, CsMatView, TriMat};
-
-const EPS: f64 = f64::EPSILON;
 
 /// Primal-dual interior point method for NLP (nonlinear programming).
 /// Minimize a function F(x) beginning from a starting point x0, subject
@@ -27,7 +26,7 @@ pub fn nlp(
     xmin: Option<ArrayView1<f64>>,
     xmax: Option<ArrayView1<f64>>,
     nonlinear: Option<&dyn NonlinearConstraint>,
-    solver: &dyn LinearSolver,
+    solver: Option<&dyn LinearSolver>,
     opt: Option<Options>,
     progress: Option<&dyn ProgressMonitor>,
 ) -> Result<(Array1<f64>, f64, bool, usize, Lambda), String> {
@@ -69,7 +68,6 @@ pub fn nlp(
         None => Array1::from_elem(nx, f64::INFINITY), // ... unbounded above.
     };
 
-    // let nonlinear = gh_fn.is_some(); // nonlinear constraints present
     let (gn, hn) = (vec![0.0; 0], vec![0.0; 0]);
 
     // Set up problem
@@ -102,7 +100,7 @@ pub fn nlp(
     let mut ibx = Vec::<usize>::new();
     for i in 0..nx {
         let (ui, li) = (uu[i], ll[i]);
-        if (ui - li).abs() <= EPS {
+        if (ui - li).abs() <= f64::EPSILON {
             ieq.push(i);
         } else if ui >= 1e-10 && li > -1e-10 {
             igt.push(i);
@@ -140,8 +138,8 @@ pub fn nlp(
             let h: Array1<f64> = concatenate![Axis(1), hn, (&ai_mat.view() * &x.view()) - &bi]; // inequality constraints
             let g: Array1<f64> = concatenate![Axis(1), gn, (&ae_mat.view() * &x.view()) - &be]; // equality constraints
 
-            let dh: CsMat<f64> = hstack(&[dhn.view(), ai_mat.transpose_view()]); // 1st derivative of inequalities
-            let dg: CsMat<f64> = hstack(&[dgn.view(), ae_mat.transpose_view()]); // 1st derivative of equalities
+            let dh: CsMat<f64> = hstack(&[dhn.unwrap().view(), ai_mat.transpose_view()]); // 1st derivative of inequalities
+            let dg: CsMat<f64> = hstack(&[dgn.unwrap().view(), ae_mat.transpose_view()]); // 1st derivative of equalities
 
             (h, g, dh, dg)
         } else {
@@ -271,7 +269,9 @@ pub fn nlp(
                 ]
                 .concat(),
             );
-            solver.solve(a_mat.view(), b.view_mut())?;
+            solver
+                .unwrap_or(&RLUSolver::default())
+                .solve(a_mat.view(), b.view_mut())?;
             b
         };
         if dxdlam.iter().any(|v| v.is_nan()) || dxdlam.norm() > max_step_size {
@@ -301,8 +301,8 @@ pub fn nlp(
                     let g1: Array1<f64> =
                         concatenate![Axis(1), gn1, (&ae_mat.view() * &x1.view()) - &be]; // equality constraints
 
-                    let dh1: CsMat<f64> = hstack(&[dhn1.view(), ai_mat.transpose_view()]); // 1st derivative of inequalities
-                    let dg1: CsMat<f64> = hstack(&[dgn1.view(), ae_mat.transpose_view()]); // 1st derivative of equalities
+                    let dh1: CsMat<f64> = hstack(&[dhn1.unwrap().view(), ai_mat.transpose_view()]); // 1st derivative of inequalities
+                    let dg1: CsMat<f64> = hstack(&[dgn1.unwrap().view(), ae_mat.transpose_view()]); // 1st derivative of equalities
 
                     (h1, g1, dh1, dg1)
                 } else {
@@ -405,8 +405,8 @@ pub fn nlp(
                 let h: Array1<f64> = concatenate![Axis(1), hn, (&ai_mat.view() * &x.view()) - &bi]; // inequality constraints
                 let g: Array1<f64> = concatenate![Axis(1), gn, (&ae_mat.view() * &x.view()) - &be]; // equality constraints
 
-                let dh: CsMat<f64> = hstack(&[dhn.view(), ai_mat.transpose_view()]); // 1st derivative of inequalities
-                let dg: CsMat<f64> = hstack(&[dgn.view(), ae_mat.transpose_view()]); // 1st derivative of equalities
+                let dh: CsMat<f64> = hstack(&[dhn.unwrap().view(), ai_mat.transpose_view()]); // 1st derivative of inequalities
+                let dg: CsMat<f64> = hstack(&[dgn.unwrap().view(), ae_mat.transpose_view()]); // 1st derivative of equalities
 
                 (h, g, dh, dg)
             } else {
@@ -455,8 +455,8 @@ pub fn nlp(
             if x.iter().any(|v| v.is_nan())
                 || alphap < alpha_min
                 || alphad < alpha_min
-                || gamma < EPS
-                || gamma > 1.0 / EPS
+                || gamma < f64::EPSILON
+                || gamma > 1.0 / f64::EPSILON
             {
                 failed = true;
                 break;
