@@ -1,11 +1,15 @@
 [package]
-name = "ipm"
+name = "interior"
 description = "Interior Point Method for Nonlinear Programming"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sprs = "0.11.0"
-ndarray = "0.15.4"
-rlu = {path = "../rlu"}
-amd = {path = "../amd_order"}
+anyhow = "1"
+itertools = "0.11"
+sparsetools = { path = "../sparsetools" }
+rlu = "0.4"
+amd = "0.2"
+
+num-traits = "0.2"
+num-complex = "0.4"

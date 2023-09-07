@@ -1,23 +1,23 @@
 use crate::common::{Lambda, Options};
-use crate::ipm::nlp;
+use crate::ipm::{dot, nlp};
 use crate::traits::{LinearSolver, ObjectiveFunction, ProgressMonitor};
-use ndarray::{Array1, ArrayView1};
-use sprs::{CsMat, CsMatView};
+use anyhow::Result;
+use sparsetools::csr::CSR;
 
 struct LinearObjectiveFunction {
     nx: usize,
-    c: Array1<f64>,
+    c: Vec<f64>,
 }
 
 impl ObjectiveFunction for LinearObjectiveFunction {
-    fn f(&self, x: ArrayView1<f64>, hessian: bool) -> (f64, Array1<f64>, Option<CsMat<f64>>) {
-        let f = self.c.dot(&x);
+    fn f(&self, x: &[f64], hessian: bool) -> (f64, Vec<f64>, Option<CSR<usize, f64>>) {
+        let f = dot(&self.c, &x);
         let df = self.c.to_owned();
 
         if !hessian {
             (f, df, None)
         } else {
-            (f, df, Some(CsMat::zero((self.nx, self.nx))))
+            (f, df, Some(CSR::zeros(self.nx, self.nx)))
         }
     }
 }
@@ -34,51 +34,40 @@ impl ObjectiveFunction for LinearObjectiveFunction {
 ///       l <= A*x <= u       (linear constraints)
 ///       xmin <= x <= xmax   (variable bounds)
 pub fn lp(
-    c: Option<ArrayView1<f64>>,
-    a_mat: Option<CsMatView<f64>>,
-    l: Option<ArrayView1<f64>>,
-    u: Option<ArrayView1<f64>>,
-    xmin: Option<ArrayView1<f64>>,
-    xmax: Option<ArrayView1<f64>>,
-    x0: Option<ArrayView1<f64>>,
+    c: Option<&Vec<f64>>,
+    a_mat: &CSR<usize, f64>,
+    l: &[f64],
+    u: &[f64],
+    xmin: &[f64],
+    xmax: &[f64],
+    x0: &[f64],
     linsolve: &dyn LinearSolver,
     progress: Option<&dyn ProgressMonitor>,
-    opt: Option<Options>,
-) -> Result<(Array1<f64>, f64, bool, usize, Lambda), String> {
+    opt: &Options,
+) -> Result<(Vec<f64>, f64, bool, usize, Lambda)> {
     // Define nx, set default values for c and x0.
-    let nx = if a_mat.is_some() && a_mat.unwrap().nnz() != 0 {
-        a_mat.unwrap().cols()
-    } else if let Some(xmin) = xmin.as_ref() {
-        xmin.len()
-    } else if let Some(xmax) = xmax.as_ref() {
-        xmax.len()
-    } else {
-        return Err("LP problem must include constraints or variable bounds".to_string());
-    };
+    let nx = a_mat.cols();
+    // let nx = if a_mat.is_some() && a_mat.unwrap().nnz() != 0 {
+    //     a_mat.unwrap().cols()
+    // } else if let Some(xmin) = xmin.as_ref() {
+    //     xmin.len()
+    // } else if let Some(xmax) = xmax.as_ref() {
+    //     xmax.len()
+    // } else {
+    //     return Err(format_err!(
+    //         "LP problem must include constraints or variable bounds"
+    //     ));
+    // };
 
     let lp = LinearObjectiveFunction {
         nx,
         c: match c {
             Some(c) => c.to_owned(),
-            None => Array1::zeros(nx),
+            None => vec![0.0; nx],
         },
-    };
-    let x0 = match x0 {
-        Some(x0) => x0.to_owned(),
-        None => Array1::zeros(nx),
     };
 
     nlp(
-        &lp,
-        x0.view(),
-        a_mat,
-        l,
-        u,
-        xmin,
-        xmax,
-        None,
-        Some(linsolve),
-        opt,
-        progress,
+        &lp, &x0, a_mat, l, u, xmin, xmax, None, linsolve, opt, progress,
     )
 }

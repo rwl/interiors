@@ -1,34 +1,32 @@
-use ndarray::Array1;
-
 /// Lagrange and Kuhn-Tucker multipliers on the constraints.
 pub struct Lambda {
     /// Multipliers on the equality constraints.
-    pub eq_non_lin: Array1<f64>,
+    pub eq_non_lin: Vec<f64>,
     /// Multipliers on the inequality constraints.
-    pub ineq_non_lin: Array1<f64>,
+    pub ineq_non_lin: Vec<f64>,
 
     /// Lower (left-hand) limit on linear constraints.
-    pub mu_l: Array1<f64>,
+    pub mu_l: Vec<f64>,
     /// Upper (right-hand) limit on linear constraints.
-    pub mu_u: Array1<f64>,
+    pub mu_u: Vec<f64>,
 
     /// Lower bound on optimization variables.
-    pub lower: Array1<f64>,
+    pub lower: Vec<f64>,
     /// Upper bound on optimization variables.
-    pub upper: Array1<f64>,
+    pub upper: Vec<f64>,
 }
 
 impl Default for Lambda {
     fn default() -> Self {
         Self {
-            eq_non_lin: Array1::default(0),
-            ineq_non_lin: Array1::default(0),
+            eq_non_lin: Vec::new(),
+            ineq_non_lin: Vec::new(),
 
-            mu_l: Array1::default(0),
-            mu_u: Array1::default(0),
+            mu_l: Vec::new(),
+            mu_u: Vec::new(),
 
-            lower: Array1::default(0),
-            upper: Array1::default(0),
+            lower: Vec::new(),
+            upper: Vec::new(),
         }
     }
 }
