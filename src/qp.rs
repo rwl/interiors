@@ -1,9 +1,11 @@
 use crate::common::{Lambda, Options};
-use crate::ipm::{dot, nlp};
-use crate::traits::{LinearSolver, ObjectiveFunction, ProgressMonitor};
+use crate::math::dot;
+use crate::nlp;
+use crate::traits::{ObjectiveFunction, ProgressMonitor};
 use anyhow::Result;
 use itertools::{izip, Itertools};
 use sparsetools::csr::CSR;
+use spsolve::Solver;
 
 struct QuadraticObjectiveFunction {
     c: Vec<f64>,
@@ -37,7 +39,7 @@ impl ObjectiveFunction for QuadraticObjectiveFunction {
 ///
 ///       l <= A*x <= u       (linear constraints)
 ///       xmin <= x <= xmax   (variable bounds)
-pub fn qp(
+pub fn qp<S>(
     h_mat: &CSR<usize, f64>,
     c: &[f64],
     a_mat: &CSR<usize, f64>,
@@ -46,12 +48,15 @@ pub fn qp(
     xmin: &[f64],
     xmax: &[f64],
     x0: &[f64],
-    linsolve: &dyn LinearSolver,
+    solver: &S,
     progress: Option<&dyn ProgressMonitor>,
     opt: &Options,
-) -> Result<(Vec<f64>, f64, bool, usize, Lambda)> {
+) -> Result<(Vec<f64>, f64, bool, usize, Lambda)>
+where
+    S: Solver<usize, f64>,
+{
     // Define nx, set default values for c and x0.
-    let nx: usize = h_mat.rows();
+    // let nx: usize = h_mat.rows();
 
     let qp = QuadraticObjectiveFunction {
         c: c.to_owned(),
@@ -67,6 +72,6 @@ pub fn qp(
     // };
 
     nlp(
-        &qp, x0, a_mat, l, u, xmin, xmax, None, linsolve, opt, progress,
+        &qp, x0, a_mat, l, u, xmin, xmax, None, solver, opt, progress,
     )
 }

@@ -8,6 +8,7 @@ edition = "2021"
 anyhow = "1"
 itertools = "0.11"
 sparsetools = { path = "../sparsetools" }
+spsolve = { path = "../spsolve" }
 rlu = "0.4"
 amd = "0.2"
 

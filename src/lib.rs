@@ -1,7 +1,7 @@
 mod common;
 mod ipm;
-mod linsol;
 mod lp;
+mod math;
 mod qp;
 #[cfg(test)]
 mod tests;

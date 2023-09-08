@@ -1,9 +1,12 @@
-use crate::common::*;
+use crate::common::{Lambda, Options};
+use crate::math::*;
 use crate::traits::*;
 use anyhow::{format_err, Result};
 use itertools::{izip, Itertools};
 use sparsetools::coo::Coo;
+use sparsetools::csc::CSC;
 use sparsetools::csr::CSR;
+use spsolve::Solver;
 
 /// Primal-dual interior point method for NLP (nonlinear programming).
 /// Minimize a function F(x) beginning from a starting point x0, subject
@@ -18,8 +21,8 @@ use sparsetools::csr::CSR;
 ///       h(x) <= 0           (nonlinear inequalities)
 ///       l <= A*x <= u       (linear constraints)
 ///       xmin <= x <= xmax   (variable bounds)
-pub fn nlp(
-    f_fn: &dyn ObjectiveFunction,
+pub fn nlp<F, S>(
+    f_fn: &F,
     x0: &[f64],
     a_mat: &CSR<usize, f64>,
     l: &[f64],
@@ -27,10 +30,14 @@ pub fn nlp(
     xmin: &[f64],
     xmax: &[f64],
     nonlinear: Option<&dyn NonlinearConstraint>,
-    solver: &dyn LinearSolver,
+    solver: &S,
     opt: &Options,
     progress: Option<&dyn ProgressMonitor>,
-) -> Result<(Vec<f64>, f64, bool, usize, Lambda)> {
+) -> Result<(Vec<f64>, f64, bool, usize, Lambda)>
+where
+    F: ObjectiveFunction,
+    S: Solver<usize, f64>,
+{
     let nx = x0.len();
 
     assert_eq!(a_mat.cols(), nx);
@@ -291,8 +298,8 @@ pub fn nlp(
         let l_xx = if let Some(hess_fn) = nonlinear {
             hess_fn.hess(&x, &lambda, opt.cost_mult)
         } else {
-            let (_, _, mut d2f) = f_fn.f(&x, true); // cost
-                                                    // d2f.as_mut().unwrap().scale(opt.cost_mult);
+            let (_, _, d2f) = f_fn.f(&x, true); // cost
+                                                // d2f.as_mut().unwrap().scale(opt.cost_mult);
             d2f.unwrap() * opt.cost_mult
         };
 
@@ -321,17 +328,25 @@ pub fn nlp(
             //     hstack(&[m_mat.view(), dg.view()]).view(),
             //     hstack(&[dg.transpose_view(), CsMatBase::zero((neq, neq)).view()]).view(),
             // ]);
-            let a_mat: CSR<usize, f64> = Coo::compose([
+            let a_mat: CSC<usize, f64> = Coo::compose([
                 [&m_mat.to_coo(), &dg.to_coo()],
                 [&dg.t().to_coo(), &Coo::empty(neq, neq, 0)],
             ])?
-            .to_csr();
+            .to_csc();
             let mut b: Vec<f64> = [
                 n.iter().map(|n| -n).collect_vec(),
                 g.iter().map(|g| -g).collect_vec(),
             ]
             .concat();
-            solver.solve(&a_mat, &mut b)?;
+            // solver.solve(&a_mat, &mut b)?;
+            solver.solve(
+                a_mat.cols(),
+                &a_mat.rowidx(),
+                &a_mat.colptr(),
+                &a_mat.data(),
+                &mut b,
+                false,
+            )?;
             b
         };
         if dxdlam.iter().any(|dxdlam| dxdlam.is_nan()) || norm(&dxdlam) > max_step_size {
@@ -364,7 +379,7 @@ pub fn nlp(
 
             // Evaluate cost, constraints, derivatives at x1.
             let (f1, df1, _) = f_fn.f(&x1, false); // cost
-            let f1 = f1 * opt.cost_mult;
+            let _f1 = f1 * opt.cost_mult;
             let df1 = df1.iter().map(|df1| df1 * opt.cost_mult).collect_vec();
 
             let (h1, g1, dh1, dg1): (Vec<f64>, Vec<f64>, CSR<usize, f64>, CSR<usize, f64>) =
@@ -414,7 +429,7 @@ pub fn nlp(
                 };
 
             // check tolerance
-            let mut l_x1 = izip!(&df1, &dg1 * &lam, &dh1 * &mu)
+            let l_x1 = izip!(&df1, &dg1 * &lam, &dh1 * &mu)
                 .map(|(df1, dg1_lam, dh1_mu)| df1 + dg1_lam + dh1_mu)
                 .collect_vec();
             let maxh1: f64 = max(&h1);
@@ -471,11 +486,11 @@ pub fn nlp(
                 };
 
                 // L1 = f1 + lam' * g1 + mu' * (h1+z) - gamma * sum(log(z));
-                let mut l1: f64 = {
+                let l1: f64 = {
                     let hz = izip!(&h1, &z).map(|(&h1, &z1)| h1 + z1).collect_vec();
                     let z_ln_sum: f64 = z.iter().map(|z| z.ln()).sum();
 
-                    f + dot(&lam, &g1) + dot(&mu, &hz) - gamma * z_ln_sum
+                    f1 + dot(&lam, &g1) + dot(&mu, &hz) - gamma * z_ln_sum
                 };
                 if opt.verbose {
                     print!("{} {}", -(j as isize), norm(&dx1));
@@ -504,7 +519,7 @@ pub fn nlp(
         } else {
             // f64::min(xi * min(z.select(&k) / -dz.select(&k)), 1.0)
             f64::min(
-                (xi * min(&k.iter().map(|&i| z[i] / -dz[i]).collect::<Vec<f64>>())),
+                xi * min(&k.iter().map(|&i| z[i] / -dz[i]).collect::<Vec<f64>>()),
                 1.0,
             )
         };
@@ -711,45 +726,4 @@ pub fn nlp(
     };
 
     Ok((x, f, converged, iterations, lambda))
-}
-
-/// Computes the dot-product of `a` and `b`.
-pub fn dot(a: &[f64], b: &[f64]) -> f64 {
-    return a
-        .iter()
-        .zip(b)
-        .map(|(&ai, &bi)| ai * bi)
-        .reduce(|x, y| x + y)
-        .unwrap_or(0.0);
-}
-
-/// Returns the maximum value of `a`.
-pub fn max(a: &[f64]) -> f64 {
-    *a.iter().max_by(|&a, b| a.partial_cmp(b).unwrap()).unwrap()
-}
-
-/// Returns the minimum value of `a`.
-pub fn min(a: &[f64]) -> f64 {
-    *a.iter().min_by(|&a, b| a.partial_cmp(b).unwrap()).unwrap()
-}
-
-/// Computes the infinity norm: `max(abs(a))`
-pub fn norm_inf(a: &[f64]) -> f64 {
-    let mut max = f64::NEG_INFINITY;
-    for i in 0..a.len() {
-        let absvi = a[i].abs();
-        if absvi > max {
-            max = absvi
-        }
-    }
-    max
-}
-
-/// Returns the 2-norm (Euclidean) of `a`.
-pub fn norm(a: &[f64]) -> f64 {
-    let mut sqsum = 0.0;
-    for i in 0..a.len() {
-        sqsum += a[i] * a[i];
-    }
-    f64::sqrt(sqsum)
 }

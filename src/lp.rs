@@ -1,8 +1,10 @@
 use crate::common::{Lambda, Options};
-use crate::ipm::{dot, nlp};
-use crate::traits::{LinearSolver, ObjectiveFunction, ProgressMonitor};
+use crate::ipm::nlp;
+use crate::math::dot;
+use crate::traits::{ObjectiveFunction, ProgressMonitor};
 use anyhow::Result;
 use sparsetools::csr::CSR;
+use spsolve::Solver;
 
 struct LinearObjectiveFunction {
     nx: usize,
@@ -33,7 +35,7 @@ impl ObjectiveFunction for LinearObjectiveFunction {
 ///
 ///       l <= A*x <= u       (linear constraints)
 ///       xmin <= x <= xmax   (variable bounds)
-pub fn lp(
+pub fn lp<S>(
     c: Option<&Vec<f64>>,
     a_mat: &CSR<usize, f64>,
     l: &[f64],
@@ -41,10 +43,13 @@ pub fn lp(
     xmin: &[f64],
     xmax: &[f64],
     x0: &[f64],
-    linsolve: &dyn LinearSolver,
+    solver: &S,
     progress: Option<&dyn ProgressMonitor>,
     opt: &Options,
-) -> Result<(Vec<f64>, f64, bool, usize, Lambda)> {
+) -> Result<(Vec<f64>, f64, bool, usize, Lambda)>
+where
+    S: Solver<usize, f64>,
+{
     // Define nx, set default values for c and x0.
     let nx = a_mat.cols();
     // let nx = if a_mat.is_some() && a_mat.unwrap().nnz() != 0 {
@@ -68,6 +73,6 @@ pub fn lp(
     };
 
     nlp(
-        &lp, &x0, a_mat, l, u, xmin, xmax, None, linsolve, opt, progress,
+        &lp, &x0, a_mat, l, u, xmin, xmax, None, solver, opt, progress,
     )
 }

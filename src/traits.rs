@@ -1,5 +1,4 @@
 use crate::common::Lambda;
-use anyhow::Result;
 use sparsetools::csr::CSR;
 
 pub trait ObjectiveFunction {
@@ -19,10 +18,6 @@ pub trait NonlinearConstraint {
     );
 
     fn hess(&self, x: &[f64], lam: &Lambda, cost_mult: f64) -> CSR<usize, f64>;
-}
-
-pub trait LinearSolver {
-    fn solve(&self, a_mat: &CSR<usize, f64>, b: &mut [f64]) -> Result<()>;
 }
 
 /// Called on each iteration of the solver with the current
