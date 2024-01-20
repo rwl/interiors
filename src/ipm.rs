@@ -192,8 +192,8 @@ where
                 .map(|(xe, be)| xe - be)
                 .collect_vec(); // equality constraints
 
-            let dh = ai_mat.t(); // 1st derivative of inequalities
-            let dg = ae_mat.t(); // 1st derivative of equalities
+            let dh = ai_mat.t().to_csr(); // 1st derivative of inequalities
+            let dg = ae_mat.t().to_csr(); // 1st derivative of equalities
 
             (h, g, dh, dg)
         };
@@ -311,7 +311,7 @@ where
         let dh_zinv = &dh * &zinvdiag;
 
         // M = Lxx + dh_zinv * mudiag * dh';
-        let m_mat: CSR<usize, f64> = &l_xx + &((&dh_zinv * &mudiag) * &dh.t());
+        let m_mat: CSR<usize, f64> = &l_xx + &((&dh_zinv * &mudiag) * &dh.t().to_csr());
 
         // N = Lx + dh_zinv * (mudiag * h + gamma * e);
         let n: Vec<f64> = {
@@ -330,7 +330,7 @@ where
             // ]);
             let a_mat: CSC<usize, f64> = Coo::compose([
                 [&m_mat.to_coo(), &dg.to_coo()],
-                [&dg.t().to_coo(), &Coo::empty(neq, neq, 0)],
+                [&dg.t().to_coo(), &Coo::with_size(neq, neq)],
             ])?
             .to_csc();
             let mut b: Vec<f64> = [
@@ -343,7 +343,7 @@ where
                 a_mat.cols(),
                 &a_mat.rowidx(),
                 &a_mat.colptr(),
-                &a_mat.data(),
+                &a_mat.values(),
                 &mut b,
                 false,
             )?;
@@ -358,7 +358,7 @@ where
         let mut dlam = (nx..(nx + neq)).map(|i| dxdlam[i]).collect_vec();
 
         // dz = -h - z - dh' * dx;
-        let mut dz = izip!(&h, &z, &dh.t() * &dx)
+        let mut dz = izip!(&h, &z, &dh.t().to_csr() * &dx) // fixme: to_csr()
             .map(|(h, z, dh_dx)| -h - z - dh_dx)
             .collect_vec();
 
@@ -422,8 +422,8 @@ where
                         .map(|(xe, be)| xe - be)
                         .collect_vec();
 
-                    let dh1 = ai_mat.t(); // dh // 1st derivative of inequalities
-                    let dg1 = ae_mat.t(); // dg // 1st derivative of equalities
+                    let dh1 = ai_mat.t().to_csr(); // dh // 1st derivative of inequalities
+                    let dg1 = ae_mat.t().to_csr(); // dg // 1st derivative of equalities
 
                     (h1, g1, dh1, dg1)
                 };
@@ -590,8 +590,8 @@ where
                     .collect_vec();
 
                 // 1st derivatives are constant, still dh = Ai', dg = Ae' TODO
-                let dh = ai_mat.t(); // 1st derivative of inequalities
-                let dg = ae_mat.t(); // 1st derivative of equalities
+                let dh = ai_mat.t().to_csr(); // 1st derivative of inequalities
+                let dg = ae_mat.t().to_csr(); // 1st derivative of equalities
 
                 (h, g, dh, dg)
             };

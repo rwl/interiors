@@ -19,7 +19,7 @@ impl ObjectiveFunction for LinearObjectiveFunction {
         if !hessian {
             (f, df, None)
         } else {
-            (f, df, Some(CSR::zeros(self.nx, self.nx)))
+            (f, df, Some(CSR::with_size(self.nx, self.nx)))
         }
     }
 }
