@@ -14,5 +14,4 @@ num-traits = "0.2"
 num-complex = "0.4"
 
 [dev-dependencies]
-#full = "0.1"
-full = { path = "../full" }
+full = "0.1"

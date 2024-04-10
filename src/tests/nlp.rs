@@ -1,6 +1,6 @@
 use crate::math::dot;
 use crate::{nlp, Lambda, NonlinearConstraint, ObjectiveFunction, Options};
-use full::{arr, Arr, Mat};
+use full::{Arr, Mat};
 use sparsetools::coo::Coo;
 use sparsetools::csc::CSC;
 use sparsetools::csr::CSR;
@@ -25,7 +25,7 @@ impl ObjectiveFunction for UnconstrainedBananaFunction {
             let d2f = CSR::from_dense(&[
                 vec![3.0 * x[0].powi(2) - x[1] + 1.0 / (2.0 * a), -x[0]],
                 vec![-x[0], 0.5],
-            ]);
+            ]) * 4.0 * a;
 
             (f, df, Some(d2f))
         }
@@ -69,7 +69,7 @@ impl ObjectiveFunction for Unconstrained3DQuadratic {
             vec![-1.0, 3.0, 5.0],
         ]);
         // let c = vec![2.0, -35.0, -47.0];
-        let c = arr![2.0, -35.0, -47.0];
+        let c = Arr::with_vec(vec![2.0, -35.0, -47.0]);
 
         let f = 0.5 * dot(&(&h * &x), &x) + dot(&c, &x) + 5.0;
         // let df = zip((&h * &x), c).map(|(a, b)| a + b).collect();
@@ -105,7 +105,7 @@ impl ObjectiveFunction for Constrained4DQP {
             vec![6.3, 2.1, 3.5, 4.8],
             vec![5.9, 3.9, 4.8, 10.0],
         ]);
-        let c = arr![0.0; 4];
+        let c = Arr::with_vec(vec![0.0; 4]);
 
         let f = 0.5 * dot(&(&h * &x), &x) + dot(&c, &x);
         let df = Arr::with_vec(&h * &x) + c;
@@ -252,7 +252,7 @@ impl NonlinearConstraint for Constrained3DNonlinear {
     ) {
         let h0 = Mat::new(2, 3, vec![1.0, -1.0, 1.0, 1.0, 1.0, 1.0])
             .mat_vec(&x.iter().map(|&x| x.powi(2)).collect::<Vec<_>>());
-        let h = Arr::with_vec(h0) + arr![-2.0, -10.0];
+        let h = Arr::with_vec(h0) + Arr::with_vec(vec![-2.0, -10.0]);
         let g = vec![];
 
         if !gradients {
@@ -348,24 +348,30 @@ fn unconstrained_banana() {
     let size = 2;
     let solver = RLU::default();
     let opt = Options::default();
-    let (x, f, converged, _iterations, _lambda) = nlp(
+    let (x, f, converged, _iterations, lambda) = nlp(
         &f2,
         &x0,
         &CSR::with_size(0, size),
         &vec![],
         &vec![],
         &vec![f64::NEG_INFINITY; size],
+        // &vec![-1e12; size],
         &vec![f64::INFINITY; size],
+        // &vec![1e12; size],
         None,
         &solver,
         &opt,
         None,
     )
-    .unwrap();
+        .unwrap();
 
     assert!(converged);
     assert_eq!(f, 0.0);
-    assert!(x.iter().all(|&x| x == 0.0));
+    assert!(x.iter().all(|&x| x == 1.0));
+    assert!(lambda.mu_l.is_empty());
+    assert!(lambda.mu_u.is_empty());
+    assert!(lambda.lower.iter().all(|&x| x == 0.0));
+    assert!(lambda.upper.iter().all(|&x| x == 0.0));
 }
 
 /*

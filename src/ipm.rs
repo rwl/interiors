@@ -34,9 +34,9 @@ pub fn nlp<F, S>(
     opt: &Options,
     progress: Option<&dyn ProgressMonitor>,
 ) -> Result<(Vec<f64>, f64, bool, usize, Lambda)>
-where
-    F: ObjectiveFunction,
-    S: Solver<usize, f64>,
+    where
+        F: ObjectiveFunction,
+        S: Solver<usize, f64>,
 {
     let nx = x0.len();
 
@@ -120,7 +120,7 @@ where
             igt.push(i);
         } else if li <= -1e-10 && ui < 1e10 {
             ilt.push(i);
-        } else {
+        } else if ((ui - li).abs() > f64::EPSILON) && (ui < 1e10) && (li > -1e10) {
             ibx.push(i);
         }
     }
@@ -150,14 +150,14 @@ where
         ibx.iter().map(|&i| uu[i]).collect_vec(),
         ibx.iter().map(|&i| -ll[i]).collect_vec(),
     ]
-    .concat();
+        .concat();
 
     // Evaluate cost f(x0) and constraints g(x0), h(x0)
     let mut x = x0.to_vec();
 
-    let (f, mut df, _) = f_fn.f(&x, false);
+    let (mut f, mut df, _) = f_fn.f(&x, false);
 
-    let f = f * opt.cost_mult;
+    f *= opt.cost_mult;
     df.iter_mut().for_each(|df| *df *= opt.cost_mult);
 
     let (h, g, dh, dg): (Vec<f64>, Vec<f64>, CSR<usize, f64>, CSR<usize, f64>) =
@@ -171,14 +171,14 @@ where
                     .map(|(xi, bi)| xi - bi)
                     .collect_vec(),
             ]
-            .concat(); // inequality constraints
+                .concat(); // inequality constraints
             let g: Vec<f64> = [
                 gn,
                 izip!(&ae_mat * &x, &be)
                     .map(|(xe, be)| xe - be)
                     .collect_vec(),
             ]
-            .concat(); // equality constraints
+                .concat(); // equality constraints
 
             let dh: CSR<usize, f64> = Coo::h_stack(&dhn.to_coo(), &ai_mat.t().to_coo())?.to_csr(); // 1st derivative of inequalities
             let dg: CSR<usize, f64> = Coo::h_stack(&dgn.to_coo(), &ae_mat.t().to_coo())?.to_csr(); // 1st derivative of equalities
@@ -256,9 +256,15 @@ where
     let mut l_x = izip!(df, &dg * &lam, &dh * &mu)
         .map(|(df, dg_lam, dh_mu)| df + dg_lam + dh_mu)
         .collect_vec();
-    let maxh: f64 = max(&h);
 
-    let feascond = f64::max(norm_inf(&g), maxh) / (1.0 + f64::max(norm_inf(&x), norm_inf(&z)));
+    let feascond = match max(&h) {
+        None => {
+            norm_inf(&g) / (1.0 + f64::max(norm_inf(&x), norm_inf(&z)))
+        }
+        Some(maxh) => {
+            f64::max(norm_inf(&g), maxh) / (1.0 + f64::max(norm_inf(&x), norm_inf(&z)))
+        }
+    };
     let gradcond = norm_inf(&l_x) / (1.0 + f64::max(norm_inf(&lam), norm_inf(&mu)));
     let compcond = dot(&z, &mu) / (1.0 + norm_inf(&x));
     let costcond = (f - f0).abs() / (1.0 + f0.abs());
@@ -299,7 +305,7 @@ where
             hess_fn.hess(&x, &lambda, opt.cost_mult)
         } else {
             let (_, _, d2f) = f_fn.f(&x, true); // cost
-                                                // d2f.as_mut().unwrap().scale(opt.cost_mult);
+            // d2f.as_mut().unwrap().scale(opt.cost_mult);
             d2f.unwrap() * opt.cost_mult
         };
 
@@ -332,12 +338,12 @@ where
                 [&m_mat.to_coo(), &dg.to_coo()],
                 [&dg.t().to_coo(), &Coo::with_size(neq, neq)],
             ])?
-            .to_csc();
+                .to_csc();
             let mut b: Vec<f64> = [
                 n.iter().map(|n| -n).collect_vec(),
                 g.iter().map(|g| -g).collect_vec(),
             ]
-            .concat();
+                .concat();
             // solver.solve(&a_mat, &mut b)?;
             solver.solve(
                 a_mat.cols(),
@@ -394,7 +400,7 @@ where
                             .map(|(xi, bi)| xi - bi)
                             .collect_vec(),
                     ]
-                    .concat();
+                        .concat();
 
                     // equality constraints
                     let g1: Vec<f64> = [
@@ -403,7 +409,7 @@ where
                             .map(|(xe, be)| xe - be)
                             .collect_vec(),
                     ]
-                    .concat();
+                        .concat();
 
                     let dh1: CSR<usize, f64> =
                         Coo::h_stack(&dhn1.to_coo(), &ai_mat.t().to_coo())?.to_csr(); // 1st derivative of inequalities
@@ -432,10 +438,15 @@ where
             let l_x1 = izip!(&df1, &dg1 * &lam, &dh1 * &mu)
                 .map(|(df1, dg1_lam, dh1_mu)| df1 + dg1_lam + dh1_mu)
                 .collect_vec();
-            let maxh1: f64 = max(&h1);
 
-            let feascond1 =
-                f64::max(norm_inf(&g1), maxh1) / (1.0 + f64::max(norm_inf(&x1), norm_inf(&z)));
+            let feascond1 = match max(&h1) {
+                None => {
+                    norm_inf(&g1) / (1.0 + f64::max(norm_inf(&x1), norm_inf(&z)))
+                }
+                Some(maxh1) => {
+                    f64::max(norm_inf(&g1), maxh1) / (1.0 + f64::max(norm_inf(&x1), norm_inf(&z)))
+                }
+            };
             let gradcond1 = norm_inf(&l_x1) / (1.0 + f64::max(norm_inf(&lam), norm_inf(&mu)));
 
             feascond1 > feascond && gradcond1 > gradcond
@@ -459,7 +470,7 @@ where
                             .map(|(xi, bi)| xi - bi)
                             .collect_vec(),
                     ]
-                    .concat();
+                        .concat();
 
                     // equality constraints
                     let g1 = [
@@ -468,7 +479,7 @@ where
                             .map(|(xe, be)| xe - be)
                             .collect_vec(),
                     ]
-                    .concat();
+                        .concat();
 
                     (h1, g1)
                 } else {
@@ -519,7 +530,7 @@ where
         } else {
             // f64::min(xi * min(z.select(&k) / -dz.select(&k)), 1.0)
             f64::min(
-                xi * min(&k.iter().map(|&i| z[i] / -dz[i]).collect::<Vec<f64>>()),
+                xi * min(&k.iter().map(|&i| z[i] / -dz[i]).collect::<Vec<f64>>()).unwrap(),
                 1.0,
             )
         };
@@ -534,7 +545,7 @@ where
         } else {
             // f64::min(xi * min(mu.select(&k) / -dmu.select(&k)), 1.0)
             f64::min(
-                xi * min(&k.iter().map(|&i| mu[i] / -dmu[i]).collect::<Vec<f64>>()),
+                xi * min(&k.iter().map(|&i| mu[i] / -dmu[i]).collect::<Vec<f64>>()).unwrap(),
                 1.0,
             )
         };
@@ -547,8 +558,8 @@ where
         }
 
         // evaluate cost, constraints, derivatives
-        let (f, mut df, _) = f_fn.f(&x, false); // cost
-        let f = f * opt.cost_mult;
+        (f, df, _) = f_fn.f(&x, false); // cost
+        f *= opt.cost_mult;
         df.iter_mut().for_each(|df| *df *= opt.cost_mult);
 
         let (h, g, dh, dg): (Vec<f64>, Vec<f64>, CSR<usize, f64>, CSR<usize, f64>) =
@@ -563,7 +574,7 @@ where
                         .map(|(xi, bi)| xi - bi)
                         .collect_vec(),
                 ]
-                .concat();
+                    .concat();
                 // equality constraints
                 let g: Vec<f64> = [
                     gn,
@@ -571,7 +582,7 @@ where
                         .map(|(xe, be)| xe - be)
                         .collect_vec(),
                 ]
-                .concat();
+                    .concat();
 
                 let dh: CSR<usize, f64> =
                     Coo::h_stack(&dhn.to_coo(), &ai_mat.t().to_coo())?.to_csr(); // 1st derivative of inequalities
@@ -599,9 +610,15 @@ where
         l_x = izip!(&df, &dg * &lam, &dh * &mu)
             .map(|(df, dg_lam, dh_mu)| df + dg_lam + dh_mu)
             .collect_vec();
-        let maxh: f64 = max(&h);
 
-        let feascond = f64::max(norm_inf(&g), maxh) / (1.0 + f64::max(norm_inf(&x), norm_inf(&z)));
+        let feascond = match max(&h) {
+            None => {
+                norm_inf(&g) / (1.0 + f64::max(norm_inf(&x), norm_inf(&z)))
+            }
+            Some(maxh) => {
+                f64::max(norm_inf(&g), maxh) / (1.0 + f64::max(norm_inf(&x), norm_inf(&z)))
+            }
+        };
         let gradcond = norm_inf(&l_x) / (1.0 + f64::max(norm_inf(&lam), norm_inf(&mu)));
         let compcond = dot(&z, &mu) / (1.0 + norm_inf(&x));
         let costcond = (f - f0).abs() / (1.0 + f0.abs());
