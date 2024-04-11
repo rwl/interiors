@@ -34,9 +34,9 @@ pub fn nlp<F, S>(
     opt: &Options,
     progress: Option<&dyn ProgressMonitor>,
 ) -> Result<(Vec<f64>, f64, bool, usize, Lambda)>
-    where
-        F: ObjectiveFunction,
-        S: Solver<usize, f64>,
+where
+    F: ObjectiveFunction,
+    S: Solver<usize, f64>,
 {
     let nx = x0.len();
 
@@ -150,7 +150,7 @@ pub fn nlp<F, S>(
         ibx.iter().map(|&i| uu[i]).collect_vec(),
         ibx.iter().map(|&i| -ll[i]).collect_vec(),
     ]
-        .concat();
+    .concat();
 
     // Evaluate cost f(x0) and constraints g(x0), h(x0)
     let mut x = x0.to_vec();
@@ -171,14 +171,14 @@ pub fn nlp<F, S>(
                     .map(|(xi, bi)| xi - bi)
                     .collect_vec(),
             ]
-                .concat(); // inequality constraints
+            .concat(); // inequality constraints
             let g: Vec<f64> = [
                 gn,
                 izip!(&ae_mat * &x, &be)
                     .map(|(xe, be)| xe - be)
                     .collect_vec(),
             ]
-                .concat(); // equality constraints
+            .concat(); // equality constraints
 
             let dh: CSR<usize, f64> = Coo::h_stack(&dhn.to_coo(), &ai_mat.t().to_coo())?.to_csr(); // 1st derivative of inequalities
             let dg: CSR<usize, f64> = Coo::h_stack(&dgn.to_coo(), &ae_mat.t().to_coo())?.to_csr(); // 1st derivative of equalities
@@ -258,12 +258,8 @@ pub fn nlp<F, S>(
         .collect_vec();
 
     let feascond = match max(&h) {
-        None => {
-            norm_inf(&g) / (1.0 + f64::max(norm_inf(&x), norm_inf(&z)))
-        }
-        Some(maxh) => {
-            f64::max(norm_inf(&g), maxh) / (1.0 + f64::max(norm_inf(&x), norm_inf(&z)))
-        }
+        None => norm_inf(&g) / (1.0 + f64::max(norm_inf(&x), norm_inf(&z))),
+        Some(maxh) => f64::max(norm_inf(&g), maxh) / (1.0 + f64::max(norm_inf(&x), norm_inf(&z))),
     };
     let gradcond = norm_inf(&l_x) / (1.0 + f64::max(norm_inf(&lam), norm_inf(&mu)));
     let compcond = dot(&z, &mu) / (1.0 + norm_inf(&x));
@@ -305,7 +301,7 @@ pub fn nlp<F, S>(
             hess_fn.hess(&x, &lambda, opt.cost_mult)
         } else {
             let (_, _, d2f) = f_fn.f(&x, true); // cost
-            // d2f.as_mut().unwrap().scale(opt.cost_mult);
+                                                // d2f.as_mut().unwrap().scale(opt.cost_mult);
             d2f.unwrap() * opt.cost_mult
         };
 
@@ -338,12 +334,12 @@ pub fn nlp<F, S>(
                 [&m_mat.to_coo(), &dg.to_coo()],
                 [&dg.t().to_coo(), &Coo::with_size(neq, neq)],
             ])?
-                .to_csc();
+            .to_csc();
             let mut b: Vec<f64> = [
                 n.iter().map(|n| -n).collect_vec(),
                 g.iter().map(|g| -g).collect_vec(),
             ]
-                .concat();
+            .concat();
             // solver.solve(&a_mat, &mut b)?;
             solver.solve(
                 a_mat.cols(),
@@ -400,7 +396,7 @@ pub fn nlp<F, S>(
                             .map(|(xi, bi)| xi - bi)
                             .collect_vec(),
                     ]
-                        .concat();
+                    .concat();
 
                     // equality constraints
                     let g1: Vec<f64> = [
@@ -409,7 +405,7 @@ pub fn nlp<F, S>(
                             .map(|(xe, be)| xe - be)
                             .collect_vec(),
                     ]
-                        .concat();
+                    .concat();
 
                     let dh1: CSR<usize, f64> =
                         Coo::h_stack(&dhn1.to_coo(), &ai_mat.t().to_coo())?.to_csr(); // 1st derivative of inequalities
@@ -440,9 +436,7 @@ pub fn nlp<F, S>(
                 .collect_vec();
 
             let feascond1 = match max(&h1) {
-                None => {
-                    norm_inf(&g1) / (1.0 + f64::max(norm_inf(&x1), norm_inf(&z)))
-                }
+                None => norm_inf(&g1) / (1.0 + f64::max(norm_inf(&x1), norm_inf(&z))),
                 Some(maxh1) => {
                     f64::max(norm_inf(&g1), maxh1) / (1.0 + f64::max(norm_inf(&x1), norm_inf(&z)))
                 }
@@ -470,7 +464,7 @@ pub fn nlp<F, S>(
                             .map(|(xi, bi)| xi - bi)
                             .collect_vec(),
                     ]
-                        .concat();
+                    .concat();
 
                     // equality constraints
                     let g1 = [
@@ -479,7 +473,7 @@ pub fn nlp<F, S>(
                             .map(|(xe, be)| xe - be)
                             .collect_vec(),
                     ]
-                        .concat();
+                    .concat();
 
                     (h1, g1)
                 } else {
@@ -574,7 +568,7 @@ pub fn nlp<F, S>(
                         .map(|(xi, bi)| xi - bi)
                         .collect_vec(),
                 ]
-                    .concat();
+                .concat();
                 // equality constraints
                 let g: Vec<f64> = [
                     gn,
@@ -582,7 +576,7 @@ pub fn nlp<F, S>(
                         .map(|(xe, be)| xe - be)
                         .collect_vec(),
                 ]
-                    .concat();
+                .concat();
 
                 let dh: CSR<usize, f64> =
                     Coo::h_stack(&dhn.to_coo(), &ai_mat.t().to_coo())?.to_csr(); // 1st derivative of inequalities
@@ -612,9 +606,7 @@ pub fn nlp<F, S>(
             .collect_vec();
 
         let feascond = match max(&h) {
-            None => {
-                norm_inf(&g) / (1.0 + f64::max(norm_inf(&x), norm_inf(&z)))
-            }
+            None => norm_inf(&g) / (1.0 + f64::max(norm_inf(&x), norm_inf(&z))),
             Some(maxh) => {
                 f64::max(norm_inf(&g), maxh) / (1.0 + f64::max(norm_inf(&x), norm_inf(&z)))
             }
