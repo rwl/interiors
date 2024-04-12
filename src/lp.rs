@@ -1,10 +1,11 @@
+use anyhow::Result;
+use sparsetools::csr::CSR;
+use spsolve::Solver;
+
 use crate::common::{Lambda, Options};
 use crate::ipm::nlp;
 use crate::math::dot;
 use crate::traits::{ObjectiveFunction, ProgressMonitor};
-use anyhow::Result;
-use sparsetools::csr::CSR;
-use spsolve::Solver;
 
 struct LinearObjectiveFunction {
     nx: usize,

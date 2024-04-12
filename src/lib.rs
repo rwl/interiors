@@ -18,9 +18,10 @@ mod ipm;
 mod lp;
 mod math;
 mod qp;
+mod traits;
+
 #[cfg(test)]
 mod tests;
-mod traits;
 
 pub use common::*;
 pub use ipm::nlp;

@@ -1,12 +1,15 @@
-use crate::common::{Lambda, Options};
-use crate::math::*;
-use crate::traits::*;
+use std::iter::zip;
+
 use anyhow::{format_err, Result};
-use itertools::{izip, Itertools};
+use log::{debug, info, trace};
 use sparsetools::coo::Coo;
 use sparsetools::csc::CSC;
 use sparsetools::csr::CSR;
 use spsolve::Solver;
+
+use crate::common::{Lambda, Options};
+use crate::math::*;
+use crate::traits::*;
 
 /// Primal-dual interior point method for NLP (nonlinear programming).
 /// Minimize a function `F(x)` beginning from a starting point `x0`, subject
@@ -69,6 +72,8 @@ where
     assert_eq!(xmin.len(), nx);
     assert_eq!(xmax.len(), nx);
 
+    debug!("nx = {}, nA = {}", nx, na);
+
     // By default, linear inequalities are ...
     // let u = match u {
     //     Some(u) => u.to_owned(),
@@ -109,6 +114,16 @@ where
     if sigma > 1.0 || sigma <= 0.0 {
         return Err(format_err!("sigma ({}) must be between 0 and 1", sigma));
     }
+    debug!(
+        "xi = {}, sigma = {}, z0 = {}, max_step_size = {:e}",
+        xi, sigma, z0, max_step_size
+    );
+    if opt.step_control {
+        debug!(
+            "step control enabled: rho_min = {}, rho_max = {}",
+            rho_min, rho_max
+        );
+    }
 
     // Add var limits to linear constraints.
     let aa_mat: CSR<usize, f64> =
@@ -134,7 +149,7 @@ where
         }
     }
     let ae_mat = aa_mat.select(Some(&ieq), None)?;
-    let be = ieq.iter().map(|&i| uu[i]).collect_vec();
+    let be: Vec<f64> = ieq.iter().map(|&i| uu[i]).collect();
     let ai_mat = {
         // &aa_mat;
 
@@ -154,10 +169,10 @@ where
         // a_i.to_csc()
     };
     let bi: Vec<f64> = [
-        ilt.iter().map(|&i| uu[i]).collect_vec(),
-        igt.iter().map(|&i| -ll[i]).collect_vec(),
-        ibx.iter().map(|&i| uu[i]).collect_vec(),
-        ibx.iter().map(|&i| -ll[i]).collect_vec(),
+        ilt.iter().map(|&i| uu[i]).collect::<Vec<f64>>(),
+        igt.iter().map(|&i| -ll[i]).collect::<Vec<f64>>(),
+        ibx.iter().map(|&i| uu[i]).collect::<Vec<f64>>(),
+        ibx.iter().map(|&i| -ll[i]).collect::<Vec<f64>>(),
     ]
     .concat();
 
@@ -169,37 +184,25 @@ where
     f *= opt.cost_mult;
     df.iter_mut().for_each(|df| *df *= opt.cost_mult);
 
+    debug!("f = {}, df = {:?}", f, df);
+
     let (h, g, dh, dg): (Vec<f64>, Vec<f64>, CSR<usize, f64>, CSR<usize, f64>) =
         if let Some(gh_fn) = nonlinear {
             let (hn, gn, dhn, dgn) = gh_fn.gh(&x, true); // nonlinear constraints
             let (dhn, dgn) = (dhn.unwrap(), dgn.unwrap());
 
-            let h: Vec<f64> = [
-                hn,
-                izip!((&ai_mat * &x), &bi)
-                    .map(|(xi, bi)| xi - bi)
-                    .collect_vec(),
-            ]
-            .concat(); // inequality constraints
-            let g: Vec<f64> = [
-                gn,
-                izip!(&ae_mat * &x, &be)
-                    .map(|(xe, be)| xe - be)
-                    .collect_vec(),
-            ]
-            .concat(); // equality constraints
+            let h: Vec<f64> =
+                [hn, zip(&ai_mat * &x, &bi).map(|(xi, bi)| xi - bi).collect()].concat(); // inequality constraints
+            let g: Vec<f64> =
+                [gn, zip(&ae_mat * &x, &be).map(|(xe, be)| xe - be).collect()].concat(); // equality constraints
 
             let dh: CSR<usize, f64> = Coo::h_stack(&dhn.to_coo(), &ai_mat.t().to_coo())?.to_csr(); // 1st derivative of inequalities
             let dg: CSR<usize, f64> = Coo::h_stack(&dgn.to_coo(), &ae_mat.t().to_coo())?.to_csr(); // 1st derivative of equalities
 
             (h, g, dh, dg)
         } else {
-            let h = izip!(&ai_mat * &x, &bi)
-                .map(|(xi, bi)| xi - bi)
-                .collect_vec(); // inequality constraints
-            let g = izip!(&ae_mat * &x, &be)
-                .map(|(xe, be)| xe - be)
-                .collect_vec(); // equality constraints
+            let h = zip(&ai_mat * &x, &bi).map(|(xi, bi)| xi - bi).collect(); // inequality constraints
+            let g = zip(&ae_mat * &x, &be).map(|(xe, be)| xe - be).collect(); // equality constraints
 
             let dh = ai_mat.t().to_csr(); // 1st derivative of inequalities
             let dg = ae_mat.t().to_csr(); // 1st derivative of equalities
@@ -215,6 +218,11 @@ where
     let nlt = ilt.len(); // number of upper bounded linear inequalities
     let ngt = igt.len(); // number of lower bounded linear inequalities
     let nbx = ibx.len(); // number of doubly bounded linear inequalities
+
+    debug!(
+        "neq = {}, niq = {}, neqnln = {}, niqnln = {}, nlt = {}, ngt = {}, nbx = {}",
+        neq, niq, neqnln, niqnln, nlt, ngt, nbx
+    );
 
     // // Initialize gamma, lam, mu, z, e.
     // let mut gamma = 1.0; // Barrier coefficient, r in Harry's code.
@@ -238,13 +246,13 @@ where
     let mut lam = vec![0.0; neq];
     let mut z = vec![z0; niq];
     let mut mu = z.clone();
-    izip!(&h, &mut z).for_each(|(&h, z)| {
+    zip(&h, &mut z).for_each(|(&h, z)| {
         if h < -z0 {
             *z = -h;
         }
     });
     // (seems k is always empty if gamma = z0 = 1)
-    izip!(&z, &mut mu).for_each(|(&z, mu)| {
+    zip(&z, &mut mu).for_each(|(&z, mu)| {
         if gamma / z > z0 {
             *mu = gamma / z;
         }
@@ -254,7 +262,7 @@ where
     // check tolerance
     let mut f0 = f;
     let mut l_step: f64 = if opt.step_control {
-        let hz = izip!(&h, &z).map(|(&h, &z)| h + z).collect_vec();
+        let hz: Vec<f64> = zip(&h, &z).map(|(&h, &z)| h + z).collect();
         let z_ln_sum: f64 = z.iter().map(|z| z.ln()).sum();
 
         f + dot(&lam, &g) + dot(&mu, &hz) - gamma * z_ln_sum
@@ -262,9 +270,10 @@ where
         0.0
     };
     // let mut l_x = df + (&dg * &lam) + (&dh * &mu);
-    let mut l_x = izip!(df, &dg * &lam, &dh * &mu)
-        .map(|(df, dg_lam, dh_mu)| df + dg_lam + dh_mu)
-        .collect_vec();
+    let mut l_x: Vec<f64> = zip(df, &dg * &lam)
+        .zip(&dh * &mu)
+        .map(|((df, dg_lam), dh_mu)| df + dg_lam + dh_mu)
+        .collect();
 
     let feascond = match max(&h) {
         None => norm_inf(&g) / (1.0 + f64::max(norm_inf(&x), norm_inf(&z))),
@@ -273,6 +282,11 @@ where
     let gradcond = norm_inf(&l_x) / (1.0 + f64::max(norm_inf(&lam), norm_inf(&mu)));
     let compcond = dot(&z, &mu) / (1.0 + norm_inf(&x));
     let costcond = (f - f0).abs() / (1.0 + f0.abs());
+
+    debug!(
+        "feascond = {}, gradcond = {}, compcond = {}, costcond = {}",
+        feascond, gradcond, compcond, costcond
+    );
 
     let mut iterations = 0;
     if let Some(progress) = progress.as_ref() {
@@ -299,39 +313,41 @@ where
     while !converged && iterations < opt.max_it {
         // Update iteration counter.
         iterations += 1;
+        debug!("Newton iteration {}...", iterations);
 
         // Compute update step.
         let lambda = Lambda {
-            eq_non_lin: (0..neqnln).map(|i| lam[i]).collect_vec(),
-            ineq_non_lin: (0..niqnln).map(|i| mu[i]).collect_vec(),
+            eq_non_lin: (0..neqnln).map(|i| lam[i]).collect(),
+            ineq_non_lin: (0..niqnln).map(|i| mu[i]).collect(),
             ..Default::default()
         };
         let l_xx = if let Some(hess_fn) = nonlinear {
             hess_fn.hess(&x, &lambda, opt.cost_mult)
         } else {
             let (_, _, d2f) = f_fn.f(&x, true); // cost
-                                                // d2f.as_mut().unwrap().scale(opt.cost_mult);
             d2f.unwrap() * opt.cost_mult
         };
+        trace!("Lxx:\n{}", l_xx.to_table());
 
         let zinvdiag = {
-            let zinv = z.iter().map(|z| 1.0 / z).collect_vec();
+            let zinv: Vec<f64> = z.iter().map(|z| 1.0 / z).collect();
             Coo::<usize, f64>::with_diagonal(&zinv).to_csr()
         };
         let mudiag = Coo::<usize, f64>::with_diagonal(&mu).to_csr();
         let dh_zinv = &dh * &zinvdiag;
 
         // M = Lxx + dh_zinv * mudiag * dh';
-        let m_mat: CSR<usize, f64> = &l_xx + &((&dh_zinv * &mudiag) * &dh.t().to_csr());
+        // let m_mat: CSR<usize, f64> = &l_xx + &((&dh_zinv * &mudiag) * &dh.t().to_csr());
+        let m_mat: CSR<usize, f64> = &l_xx + &(&dh_zinv * (&mudiag * &dh.t().to_csr()));
 
         // N = Lx + dh_zinv * (mudiag * h + gamma * e);
         let n: Vec<f64> = {
-            let temp = izip!(&mudiag * &h, &e)
+            let temp: Vec<f64> = zip(&mudiag * &h, &e)
                 .map(|(mudiag_h, e)| mudiag_h + gamma * e)
-                .collect_vec();
-            izip!(&l_x, &dh_zinv * &temp)
+                .collect();
+            zip(&l_x, &dh_zinv * &temp)
                 .map(|(l_x, dh_zinv_temp)| l_x + dh_zinv_temp)
-                .collect_vec()
+                .collect()
         };
 
         let dxdlam = {
@@ -345,8 +361,8 @@ where
             ])?
             .to_csc();
             let mut b: Vec<f64> = [
-                n.iter().map(|n| -n).collect_vec(),
-                g.iter().map(|g| -g).collect_vec(),
+                n.iter().map(|n| -n).collect::<Vec<f64>>(),
+                g.iter().map(|g| -g).collect::<Vec<f64>>(),
             ]
             .concat();
             // solver.solve(&a_mat, &mut b)?;
@@ -364,34 +380,41 @@ where
             failed = true;
             break;
         }
-        let mut dx = (0..nx).map(|i| dxdlam[i]).collect_vec();
+        // let mut dx: Vec<f64> = (0..nx).map(|i| dxdlam[i]).collect();
+        let mut dx = dxdlam[0..nx].to_vec();
+        trace!("dx = {:?}", dx);
 
-        let mut dlam = (nx..(nx + neq)).map(|i| dxdlam[i]).collect_vec();
+        // let mut dlam: Vec<f64> = (nx..(nx + neq)).map(|i| dxdlam[i]).collect();
+        let mut dlam = dxdlam[nx..(nx + neq)].to_vec();
+        trace!("dlam = {:?}", dlam);
 
         // dz = -h - z - dh' * dx;
-        let mut dz = izip!(&h, &z, &dh.t().to_csr() * &dx) // fixme: to_csr()
-            .map(|(h, z, dh_dx)| -h - z - dh_dx)
-            .collect_vec();
+        let mut dz: Vec<f64> = zip(&h, &z)
+            .zip(&dh.t().to_csr() * &dx) // fixme: to_csr()
+            .map(|((h, z), dh_dx)| -h - z - dh_dx)
+            .collect();
+        trace!("dz = {:?}", dz);
 
         // dmu = -mu + zinvdiag *(gamma*e - mudiag * dz);
-        let mut dmu = {
-            let temp = izip!(&e, &mudiag * &dz)
+        let mut dmu: Vec<f64> = {
+            let temp: Vec<f64> = zip(&e, &mudiag * &dz)
                 .map(|(e, mudiag_dz)| gamma * e - mudiag_dz)
-                .collect_vec();
+                .collect();
 
-            izip!(&mu, &zinvdiag * &temp)
+            zip(&mu, &zinvdiag * &temp)
                 .map(|(mu, zinvdiag_temp)| -mu + zinvdiag_temp)
-                .collect_vec()
+                .collect()
         };
+        trace!("dmu = {:?}", dmu);
 
         // Optional step-size control.
         let sc = if opt.step_control {
-            let x1 = izip!(&x, &dx).map(|(x, dx)| x + dx).collect_vec();
+            let x1: Vec<f64> = zip(&x, &dx).map(|(x, dx)| x + dx).collect();
 
             // Evaluate cost, constraints, derivatives at x1.
-            let (f1, df1, _) = f_fn.f(&x1, false); // cost
-            let _f1 = f1 * opt.cost_mult;
-            let df1 = df1.iter().map(|df1| df1 * opt.cost_mult).collect_vec();
+            let (mut _f1, mut df1, _) = f_fn.f(&x1, false); // cost
+            _f1 *= opt.cost_mult;
+            df1.iter_mut().for_each(|df1| *df1 *= opt.cost_mult);
 
             let (h1, g1, dh1, dg1): (Vec<f64>, Vec<f64>, CSR<usize, f64>, CSR<usize, f64>) =
                 if let Some(gh_fn) = nonlinear {
@@ -401,18 +424,14 @@ where
                     // inequality constraints
                     let h1: Vec<f64> = [
                         hn1,
-                        izip!(&ai_mat * &x1, &bi)
-                            .map(|(xi, bi)| xi - bi)
-                            .collect_vec(),
+                        zip(&ai_mat * &x1, &bi).map(|(xi, bi)| xi - bi).collect(),
                     ]
                     .concat();
 
                     // equality constraints
                     let g1: Vec<f64> = [
                         gn1,
-                        izip!(&ae_mat * &x1, &be)
-                            .map(|(xe, be)| xe - be)
-                            .collect_vec(),
+                        zip(&ae_mat * &x1, &be).map(|(xe, be)| xe - be).collect(),
                     ]
                     .concat();
 
@@ -424,14 +443,10 @@ where
                     (h1, g1, dh1, dg1)
                 } else {
                     // inequality constraints
-                    let h1 = izip!(&ai_mat * &x1, &bi)
-                        .map(|(xi, bi)| xi - bi)
-                        .collect_vec();
+                    let h1 = zip(&ai_mat * &x1, &bi).map(|(xi, bi)| xi - bi).collect();
 
                     // equality constraints
-                    let g1 = izip!(&ae_mat * &x1, &be)
-                        .map(|(xe, be)| xe - be)
-                        .collect_vec();
+                    let g1 = zip(&ae_mat * &x1, &be).map(|(xe, be)| xe - be).collect();
 
                     let dh1 = ai_mat.t().to_csr(); // dh // 1st derivative of inequalities
                     let dg1 = ae_mat.t().to_csr(); // dg // 1st derivative of equalities
@@ -440,9 +455,10 @@ where
                 };
 
             // check tolerance
-            let l_x1 = izip!(&df1, &dg1 * &lam, &dh1 * &mu)
-                .map(|(df1, dg1_lam, dh1_mu)| df1 + dg1_lam + dh1_mu)
-                .collect_vec();
+            let l_x1: Vec<f64> = zip(&df1, &dg1 * &lam)
+                .zip(&dh1 * &mu)
+                .map(|((df1, dg1_lam), dh1_mu)| df1 + dg1_lam + dh1_mu)
+                .collect();
 
             let feascond1 = match max(&h1) {
                 None => norm_inf(&g1) / (1.0 + f64::max(norm_inf(&x1), norm_inf(&z))),
@@ -459,56 +475,47 @@ where
         if sc {
             let mut alpha = 1.0;
             for j in 0..opt.max_red {
-                let dx1 = dx.iter().map(|dx| alpha * dx).collect_vec();
-                let x1 = izip!(&x, &dx1).map(|(&x, &dx1)| x + dx1).collect_vec();
-                let (f1, _, _) = f_fn.f(&x1, false); // cost
-                let f1 = f1 * opt.cost_mult;
+                let dx1: Vec<f64> = dx.iter().map(|dx| alpha * dx).collect();
+                let x1: Vec<f64> = zip(&x, &dx1).map(|(&x, &dx1)| x + dx1).collect();
+                let (mut f1, _, _) = f_fn.f(&x1, false); // cost
+                f1 *= opt.cost_mult;
                 let (h1, g1) = if let Some(gh_fn) = nonlinear {
                     let (hn1, gn1, _, _) = gh_fn.gh(&x1, false); // nonlinear constraints
 
                     // inequality constraints
                     let h1 = [
                         hn1,
-                        izip!(&ai_mat * &x1, &bi)
-                            .map(|(xi, bi)| xi - bi)
-                            .collect_vec(),
+                        zip(&ai_mat * &x1, &bi).map(|(xi, bi)| xi - bi).collect(),
                     ]
                     .concat();
 
                     // equality constraints
                     let g1 = [
                         gn1,
-                        izip!(&ae_mat * &x1, &be)
-                            .map(|(xe, be)| xe - be)
-                            .collect_vec(),
+                        zip(&ae_mat * &x1, &be).map(|(xe, be)| xe - be).collect(),
                     ]
                     .concat();
 
                     (h1, g1)
                 } else {
                     // inequality constraints
-                    let h1 = izip!(&ai_mat * &x1, &bi)
-                        .map(|(xi, bi)| xi - bi)
-                        .collect_vec();
+                    let h1 = zip(&ai_mat * &x1, &bi).map(|(xi, bi)| xi - bi).collect();
 
                     // equality constraints
-                    let g1 = izip!(&ae_mat * &x1, &be)
-                        .map(|(xe, be)| xe - be)
-                        .collect_vec();
+                    let g1 = zip(&ae_mat * &x1, &be).map(|(xe, be)| xe - be).collect();
 
                     (h1, g1)
                 };
 
                 // L1 = f1 + lam' * g1 + mu' * (h1+z) - gamma * sum(log(z));
                 let l1: f64 = {
-                    let hz = izip!(&h1, &z).map(|(&h1, &z1)| h1 + z1).collect_vec();
+                    let hz: Vec<f64> = zip(&h1, &z).map(|(&h1, &z1)| h1 + z1).collect();
                     let z_ln_sum: f64 = z.iter().map(|z| z.ln()).sum();
 
                     f1 + dot(&lam, &g1) + dot(&mu, &hz) - gamma * z_ln_sum
                 };
-                if opt.verbose {
-                    print!("{} {}", -(j as isize), norm(&dx1));
-                }
+                debug!("reduction {}: {}", j + 1, norm(&dx1));
+
                 let rho = (l1 - l_step) / (dot(&l_x, &dx1) + 0.5 * dot(&dx1, &(&l_xx * &dx1)));
                 if rho > rho_min && rho < rho_max {
                     break;
@@ -523,11 +530,11 @@ where
         }
         // do the update
         // let k = find(&lt(dz, 0.0));
-        let k = dz
+        let k: Vec<usize> = dz
             .iter()
             .enumerate()
             .filter_map(|(i, &v)| if v < 0.0 { Some(i) } else { None })
-            .collect_vec();
+            .collect();
         let alphap = if k.is_empty() {
             1.0
         } else {
@@ -538,11 +545,11 @@ where
             )
         };
         // let k = find(&lt(dmu, 0.0));
-        let k = dmu
+        let k: Vec<usize> = dmu
             .iter()
             .enumerate()
             .filter_map(|(i, &v)| if v < 0.0 { Some(i) } else { None })
-            .collect_vec();
+            .collect();
         let alphad = if k.is_empty() {
             1.0
         } else {
@@ -552,10 +559,10 @@ where
                 1.0,
             )
         };
-        izip!(&mut x, &dx).for_each(|(x, dx)| *x += alphap * dx);
-        izip!(&mut z, &dz).for_each(|(z, dz)| *z += alphap * dz);
-        izip!(&mut lam, &dlam).for_each(|(lam, dlam)| *lam += alphad * dlam);
-        izip!(&mut mu, &dmu).for_each(|(mu, dmu)| *mu += alphad * dmu);
+        zip(&mut x, &dx).for_each(|(x, dx)| *x += alphap * dx);
+        zip(&mut z, &dz).for_each(|(z, dz)| *z += alphap * dz);
+        zip(&mut lam, &dlam).for_each(|(lam, dlam)| *lam += alphad * dlam);
+        zip(&mut mu, &dmu).for_each(|(mu, dmu)| *mu += alphad * dmu);
         if niq > 0 {
             gamma = sigma * dot(&z, &mu) / (niq as f64);
         }
@@ -565,27 +572,19 @@ where
         f *= opt.cost_mult;
         df.iter_mut().for_each(|df| *df *= opt.cost_mult);
 
+        debug!("f = {}, df = {:?}", f, df);
+
         let (h, g, dh, dg): (Vec<f64>, Vec<f64>, CSR<usize, f64>, CSR<usize, f64>) =
             if let Some(gh_fn) = nonlinear {
                 let (hn, gn, dhn, dgn) = gh_fn.gh(&x, true); // nonlinear constraints
                 let (dhn, dgn) = (dhn.unwrap(), dgn.unwrap());
 
                 // inequality constraints
-                let h: Vec<f64> = [
-                    hn,
-                    izip!((&ai_mat * &x), &bi)
-                        .map(|(xi, bi)| xi - bi)
-                        .collect_vec(),
-                ]
-                .concat();
+                let h: Vec<f64> =
+                    [hn, zip(&ai_mat * &x, &bi).map(|(xi, bi)| xi - bi).collect()].concat();
                 // equality constraints
-                let g: Vec<f64> = [
-                    gn,
-                    izip!(&ae_mat * &x, &be)
-                        .map(|(xe, be)| xe - be)
-                        .collect_vec(),
-                ]
-                .concat();
+                let g: Vec<f64> =
+                    [gn, zip(&ae_mat * &x, &be).map(|(xe, be)| xe - be).collect()].concat();
 
                 let dh: CSR<usize, f64> =
                     Coo::h_stack(&dhn.to_coo(), &ai_mat.t().to_coo())?.to_csr(); // 1st derivative of inequalities
@@ -595,13 +594,9 @@ where
                 (h, g, dh, dg)
             } else {
                 // inequality constraints
-                let h = izip!(&ai_mat * &x, &bi)
-                    .map(|(xi, bi)| xi - bi)
-                    .collect_vec();
+                let h = zip(&ai_mat * &x, &bi).map(|(xi, bi)| xi - bi).collect();
                 // equality constraints
-                let g = izip!(&ae_mat * &x, &be)
-                    .map(|(xe, be)| xe - be)
-                    .collect_vec();
+                let g = zip(&ae_mat * &x, &be).map(|(xe, be)| xe - be).collect();
 
                 // 1st derivatives are constant, still dh = Ai', dg = Ae' TODO
                 let dh = ai_mat.t().to_csr(); // 1st derivative of inequalities
@@ -610,9 +605,11 @@ where
                 (h, g, dh, dg)
             };
 
-        l_x = izip!(&df, &dg * &lam, &dh * &mu)
-            .map(|(df, dg_lam, dh_mu)| df + dg_lam + dh_mu)
-            .collect_vec();
+        l_x = zip(&df, &dg * &lam)
+            .zip(&dh * &mu)
+            .map(|((df, dg_lam), dh_mu)| df + dg_lam + dh_mu)
+            .collect();
+        trace!("Lx: {:?}", l_x);
 
         let feascond = match max(&h) {
             None => norm_inf(&g) / (1.0 + f64::max(norm_inf(&x), norm_inf(&z))),
@@ -623,6 +620,11 @@ where
         let gradcond = norm_inf(&l_x) / (1.0 + f64::max(norm_inf(&lam), norm_inf(&mu)));
         let compcond = dot(&z, &mu) / (1.0 + norm_inf(&x));
         let costcond = (f - f0).abs() / (1.0 + f0.abs());
+
+        debug!(
+            "feascond = {}, gradcond = {}, compcond = {}, costcond = {}",
+            feascond, gradcond, compcond, costcond
+        );
 
         if let Some(progress) = progress.as_ref() {
             progress.update(
@@ -644,9 +646,7 @@ where
             && costcond < opt.cost_tol
         {
             converged = true;
-            if opt.verbose {
-                println!("Converged!");
-            }
+            info!("Converged in {} iterations", iterations);
         } else {
             if x.iter().any(|v| v.is_nan())
                 || alphap < alpha_min
@@ -661,7 +661,7 @@ where
             f0 = f;
             if opt.step_control {
                 l_step = {
-                    let hz = izip!(&h, &z).map(|(&h, &z)| h + z).collect_vec();
+                    let hz: Vec<f64> = zip(&h, &z).map(|(&h, &z)| h + z).collect();
                     let z_ln_sum: f64 = z.iter().map(|z| z.ln()).sum();
 
                     f + dot(&lam, &g) + dot(&mu, &hz) - gamma * z_ln_sum
@@ -669,10 +669,8 @@ where
             }
         }
     }
-    if opt.verbose {
-        if !converged {
-            println!("Did not converge in {} iterations.", iterations);
-        }
+    if !converged {
+        info!("Did not converge in {} iterations.", iterations);
     }
 
     // Package up results.
@@ -686,7 +684,7 @@ where
 
     // zero out multipliers on non-binding constraints
     // mu(h < -opt.feastol & mu < mu_threshold) = 0;
-    izip!(&h, &mut mu).for_each(|(&h, mu)| {
+    zip(&h, &mut mu).for_each(|(&h, mu)| {
         if h < -opt.feas_tol && *mu < mu_threshold {
             *mu = 0.0;
         }
@@ -701,28 +699,27 @@ where
     let lam_lin = &lam[neqnln..neq]; // lambda for linear constraints
     let mu_lin = &mu[niqnln..niq]; // mu for linear constraints
 
-    let kl = lam_lin
+    let kl: Vec<usize> = lam_lin
         .iter()
         .enumerate()
         .filter_map(|(i, &v)| if v < 0.0 { Some(i) } else { None }) // lower bound binding
-        .collect_vec();
-    let ku = lam_lin
+        .collect();
+    let ku: Vec<usize> = lam_lin
         .iter()
         .enumerate()
         .filter_map(|(i, &v)| if v > 0.0 { Some(i) } else { None }) // upper bound binding
-        .collect_vec();
+        .collect();
 
     let mut mu_l = vec![0.0; nx + na];
     kl.iter().for_each(|&kl| mu_l[ieq[kl]] = -lam_lin[kl]);
-    izip!(&igt, (nlt..(nlt + ngt)).collect_vec()).for_each(|(&igt, i)| mu_l[igt] = mu_lin[i]);
-    izip!(&ibx, (nlt + ngt + nbx..nlt + ngt + nbx + nbx).collect_vec())
-        .for_each(|(&ibx, i)| mu_l[ibx] = mu_lin[i]);
+    zip(&igt, &mu_lin[nlt..(nlt + ngt)]).for_each(|(&igt, &mu_lin)| mu_l[igt] = mu_lin);
+    zip(&ibx, &mu_lin[nlt + ngt + nbx..nlt + ngt + nbx + nbx])
+        .for_each(|(&ibx, &mu_lin)| mu_l[ibx] = mu_lin);
 
     let mu_u = vec![0.0; nx + na];
     ku.iter().for_each(|&ku| mu_l[ieq[ku]] = lam_lin[ku]);
-    izip!(&ilt, (0..nlt).collect_vec()).for_each(|(&ilt, i)| mu_l[ilt] = mu_lin[i]);
-    izip!(&ibx, (nlt + ngt..nlt + ngt + nbx).collect_vec())
-        .for_each(|(&ibx, i)| mu_l[ibx] = mu_lin[i]);
+    zip(&ilt, &mu_lin[0..nlt]).for_each(|(&ilt, &mu_lin)| mu_l[ilt] = mu_lin);
+    zip(&ibx, &mu_lin[nlt + ngt..nlt + ngt + nbx]).for_each(|(&ibx, &mu_lin)| mu_l[ibx] = mu_lin);
 
     let lambda = Lambda {
         mu_l: mu_l[nx..].to_vec(),
@@ -742,6 +739,13 @@ where
             Vec::default()
         },
     };
+
+    debug!("mu_l: {:?}", lambda.mu_l);
+    debug!("mu_u: {:?}", lambda.mu_u);
+    debug!("lower: {:?}", lambda.lower);
+    debug!("upper: {:?}", lambda.upper);
+    debug!("eq_non_lin: {:?}", lambda.eq_non_lin);
+    debug!("ineq_non_lin: {:?}", lambda.ineq_non_lin);
 
     Ok((x, f, converged, iterations, lambda))
 }

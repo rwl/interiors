@@ -1,10 +1,12 @@
-use crate::{nlp, Lambda, NonlinearConstraint, ObjectiveFunction, Options};
+use std::iter::zip;
+
 use full::Arr;
 use sparsetools::coo::Coo;
 use sparsetools::csc::CSC;
 use sparsetools::csr::CSR;
 use spsolve::rlu::RLU;
-use std::iter::zip;
+
+use crate::{nlp, Lambda, NonlinearConstraint, ObjectiveFunction, Options};
 
 /// Hock & Schittkowski test problem #71
 struct Constrained4DNonlinear {}

@@ -1,6 +1,7 @@
-use crate::{nlp, ObjectiveFunction, Options};
 use sparsetools::csr::CSR;
 use spsolve::rlu::RLU;
+
+use crate::{nlp, ObjectiveFunction, Options};
 
 /// 2-dimensional unconstrained optimization of Rosenbrock's "banana" function
 /// from MATLAB Optimization Toolbox's `bandem.m`:

@@ -1,12 +1,14 @@
-use crate::{qp, Options};
+use std::iter::zip;
+
 use sparsetools::csr::CSR;
 use spsolve::rlu::RLU;
-use std::iter::zip;
+
+use crate::{qp, Options};
 
 /// based on example from 'doc linprog'
 #[test]
 pub fn lp3d() {
-    let h_mat = CSR::with_size(0, 3);
+    let h_mat = CSR::with_size(3, 3);
     let c = vec![-5.0, -4.0, -6.0];
     let a_mat = CSR::from_dense(&vec![
         vec![1.0, -1.0, 1.0],
@@ -82,11 +84,11 @@ pub fn constrained_2d_qp() {
     let h_mat = CSR::from_dense(&vec![vec![1.0, -1.0], vec![-1.0, 2.0]]);
     let c = vec![-2.0, -6.0];
     let a_mat = CSR::from_dense(&vec![vec![1.0, 1.0], vec![-1.0, 2.0], vec![2.0, 1.0]]);
-    let l = vec![];
+    let l = vec![f64::NEG_INFINITY; 3];
     let u = vec![2.0, 2.0, 3.0];
     let xmin = vec![0.0, 0.0];
     let xmax = vec![f64::INFINITY; 2];
-    let x0 = vec![];
+    let x0 = vec![0.0; 2];
 
     let solver = RLU::default();
     let options = Options::default();

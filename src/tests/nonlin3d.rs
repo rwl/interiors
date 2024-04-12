@@ -1,9 +1,11 @@
-use crate::math::dot;
-use crate::{nlp, Lambda, NonlinearConstraint, ObjectiveFunction, Options};
+use std::iter::zip;
+
 use full::{Arr, Mat};
 use sparsetools::csr::CSR;
 use spsolve::rlu::RLU;
-use std::iter::zip;
+
+use crate::math::dot;
+use crate::{nlp, Lambda, NonlinearConstraint, ObjectiveFunction, Options};
 
 struct Constrained3DNonlinear {}
 

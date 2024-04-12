@@ -32,9 +32,6 @@ impl Default for Lambda {
 }
 
 pub struct Options {
-    /// Controls level of progress output displayed.
-    pub verbose: bool,
-
     /// Termination tolerance for feasibility condition.
     pub feas_tol: f64,
     /// Termination tolerance for gradient condition.
@@ -81,8 +78,6 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            verbose: false,
-
             feas_tol: 1e-6,
             grad_tol: 1e-6,
             comp_tol: 1e-6,

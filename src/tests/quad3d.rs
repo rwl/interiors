@@ -1,9 +1,11 @@
-use crate::math::dot;
-use crate::{nlp, ObjectiveFunction, Options};
+use std::iter::zip;
+
 use full::Arr;
 use sparsetools::csr::CSR;
 use spsolve::rlu::RLU;
-use std::iter::zip;
+
+use crate::math::dot;
+use crate::{nlp, ObjectiveFunction, Options};
 
 /// Unconstrained 3-d quadratic from http://www.akiti.ca/QuadProgEx0Constr.html.
 struct Unconstrained3DQuadratic {}

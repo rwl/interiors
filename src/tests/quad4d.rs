@@ -1,9 +1,11 @@
-use crate::math::dot;
-use crate::{nlp, ObjectiveFunction, Options, ProgressMonitor};
+use std::iter::zip;
+
 use full::Arr;
 use sparsetools::csr::CSR;
 use spsolve::rlu::RLU;
-use std::iter::zip;
+
+use crate::math::dot;
+use crate::{nlp, ObjectiveFunction, Options, ProgressMonitor};
 
 /// Constrained 4-d QP from http://www.jmu.edu/docs/sasdoc/sashtml/iml/chap8/sect12.htm.
 struct Constrained4DQP {}
@@ -65,17 +67,8 @@ fn constrained_4d_qp() {
     let solver = RLU::default();
     let opt = Options::default();
     let (x, f, converged, _iterations, lambda) = nlp(
-        &f4,
-        &x0,
-        &a_mat,
-        &l,
-        &u,
-        &xmin,
-        &xmax,
-        None,
-        &solver,
-        &opt,
-        Some(&f4),
+        &f4, &x0, &a_mat, &l, &u, &xmin, &xmax, None, &solver, &opt, None,
+        // Some(&f4),
     )
     .unwrap();
 

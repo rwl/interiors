@@ -1,11 +1,13 @@
+use std::iter::zip;
+
+use anyhow::Result;
+use sparsetools::csr::CSR;
+use spsolve::Solver;
+
 use crate::common::{Lambda, Options};
 use crate::math::dot;
 use crate::nlp;
 use crate::traits::{ObjectiveFunction, ProgressMonitor};
-use anyhow::Result;
-use itertools::{izip, Itertools};
-use sparsetools::csr::CSR;
-use spsolve::Solver;
 
 struct QuadraticObjectiveFunction {
     c: Vec<f64>,
@@ -15,9 +17,9 @@ struct QuadraticObjectiveFunction {
 impl ObjectiveFunction for QuadraticObjectiveFunction {
     fn f(&self, x: &[f64], hessian: bool) -> (f64, Vec<f64>, Option<CSR<usize, f64>>) {
         let f = 0.5 * dot(&x, &(&self.h_mat * &x)) + dot(&self.c, &x);
-        let df = izip!(&self.h_mat * &x, &self.c)
+        let df = zip(&self.h_mat * &x, &self.c)
             .map(|(hx, c)| hx + c)
-            .collect_vec();
+            .collect();
 
         if !hessian {
             (f, df, None)
