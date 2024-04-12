@@ -544,7 +544,7 @@ where
             )
         };
         izip!(&mut x, &dx).for_each(|(x, dx)| *x += alphap * dx);
-        izip!(&mut z, &dz).for_each(|(z, dz)| *z += alphad * dz);
+        izip!(&mut z, &dz).for_each(|(z, dz)| *z += alphap * dz);
         izip!(&mut lam, &dlam).for_each(|(lam, dlam)| *lam += alphad * dlam);
         izip!(&mut mu, &dmu).for_each(|(mu, dmu)| *mu += alphad * dmu);
         if niq > 0 {
