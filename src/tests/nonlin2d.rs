@@ -46,7 +46,7 @@ impl NonlinearConstraint for Constrained2DNonlinear {
             return (h, g, None, None);
         } else {
             let dh = CSR::from_dense(&[vec![-x[0], x[0]], vec![-x[1], x[1]]]) * 2.0;
-            let dg = CSR::with_size(0, 0);
+            let dg = CSR::with_size(2, 0);
 
             (h, g, Some(dh), Some(dg))
         }

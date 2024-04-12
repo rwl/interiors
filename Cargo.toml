@@ -1,17 +1,20 @@
 [package]
 name = "interiors"
-description = "Interior Point Method for Nonlinear Programming"
+description = "Primal-Dual Interior Point Method for Nonlinear Programming"
 version = "0.1.0"
 edition = "2021"
+license = "BSD-3"
+repository = "https://github.com/rwl/interiors"
 
 [dependencies]
 anyhow = "1"
 itertools = "0.11"
-sparsetools = "0.2"
-spsolve = { version = "0.1", features = ["rlu"] }
+sparsetools = "0.2.1"
+spsolve = { version = "0.1" }
 
 num-traits = "0.2"
 num-complex = "0.4"
 
 [dev-dependencies]
 full = "0.1"
+spsolve = { version = "0.1", features = ["rlu"] }

@@ -28,13 +28,17 @@ impl ObjectiveFunction for LinearObjectiveFunction {
 ///
 /// Solve the following LP (linear programming) problem:
 ///
+/// ```txt
 ///       min c'*x
 ///        x
+/// ```
 ///
 /// subject to
 ///
+/// ```txt
 ///       l <= A*x <= u       (linear constraints)
 ///       xmin <= x <= xmax   (variable bounds)
+/// ```
 pub fn lp<S>(
     c: Option<&Vec<f64>>,
     a_mat: &CSR<usize, f64>,

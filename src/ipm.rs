@@ -9,18 +9,27 @@ use sparsetools::csr::CSR;
 use spsolve::Solver;
 
 /// Primal-dual interior point method for NLP (nonlinear programming).
-/// Minimize a function F(x) beginning from a starting point x0, subject
+/// Minimize a function `F(x)` beginning from a starting point `x0`, subject
 /// to optional linear and nonlinear constraints and variable bounds.
 ///
+/// ```txt
 ///       min F(x)
 ///        x
+/// ```
 ///
 /// subject to
 ///
+/// ```txt
 ///       g(x) = 0            (nonlinear equalities)
 ///       h(x) <= 0           (nonlinear inequalities)
 ///       l <= A*x <= u       (linear constraints)
 ///       xmin <= x <= xmax   (variable bounds)
+/// ```
+///
+/// Returns the solution vector `x`, the final objective function value `f`,
+/// an exit flag indicating if the solver converged, the number of iterations
+/// performed and a structure containing the Lagrange and Kuhn-Tucker
+/// multipliers on the constraints.
 pub fn nlp<F, S>(
     f_fn: &F,
     x0: &[f64],

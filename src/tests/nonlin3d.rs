@@ -48,9 +48,8 @@ impl NonlinearConstraint for Constrained3DNonlinear {
         } else {
             let dh =
                 CSR::from_dense(&[vec![x[0], x[0]], vec![-x[1], x[1]], vec![x[2], x[2]]]) * 2.0;
-
-            let dg = None; // FIXME
-            (h.vec(), g, Some(dh), dg)
+            let dg = CSR::with_size(3, 0);
+            (h.vec(), g, Some(dh), Some(dg))
         }
     }
 

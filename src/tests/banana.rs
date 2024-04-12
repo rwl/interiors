@@ -2,7 +2,14 @@ use crate::{nlp, ObjectiveFunction, Options};
 use sparsetools::csr::CSR;
 use spsolve::rlu::RLU;
 
-/// Unconstrained banana function from MATLAB Optimization Toolbox's `bandem.m`.
+/// 2-dimensional unconstrained optimization of Rosenbrock's "banana" function
+/// from MATLAB Optimization Toolbox's `bandem.m`:
+///
+/// ```txt
+///     f(x) = 100(x_2 − x_1^2) 2 + (1 − x_1)^2
+/// ```
+///
+/// https://en.wikipedia.org/wiki/Rosenbrock_function
 struct UnconstrainedBananaFunction {}
 
 impl ObjectiveFunction for UnconstrainedBananaFunction {

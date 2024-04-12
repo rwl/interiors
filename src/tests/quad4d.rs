@@ -1,5 +1,5 @@
 use crate::math::dot;
-use crate::{nlp, ObjectiveFunction, Options};
+use crate::{nlp, ObjectiveFunction, Options, ProgressMonitor};
 use full::Arr;
 use sparsetools::csr::CSR;
 use spsolve::rlu::RLU;
@@ -24,6 +24,8 @@ impl ObjectiveFunction for Constrained4DQP {
         (f, df.vec(), if hessian { Some(h) } else { None })
     }
 }
+
+impl ProgressMonitor for Constrained4DQP {}
 
 /*
 fn f4(x: Array1<f64>, hessian: bool) -> (f64, Array1<f64>, Option<CsMat<f64>>) {
@@ -63,7 +65,17 @@ fn constrained_4d_qp() {
     let solver = RLU::default();
     let opt = Options::default();
     let (x, f, converged, _iterations, lambda) = nlp(
-        &f4, &x0, &a_mat, &l, &u, &xmin, &xmax, None, &solver, &opt, None,
+        &f4,
+        &x0,
+        &a_mat,
+        &l,
+        &u,
+        &xmin,
+        &xmax,
+        None,
+        &solver,
+        &opt,
+        Some(&f4),
     )
     .unwrap();
 

@@ -32,13 +32,29 @@ impl ObjectiveFunction for QuadraticObjectiveFunction {
 ///
 /// Solve the following QP (quadratic programming) problem:
 ///
+/// ```txt
 ///       min 1/2 x'*H*x + c'*x
 ///        x
+/// ```
 ///
 /// subject to
 ///
+/// ```txt
 ///       l <= A*x <= u       (linear constraints)
 ///       xmin <= x <= xmax   (variable bounds)
+/// ```
+///
+/// `h_mat` is a sparse matrix of quadratic cost coefficients.
+/// `c` is a vector of linear cost coefficients.
+/// `a_mat`, `l`, `u` define the optional linear constraints.
+/// `xmin` and `xmax` define optional lower and upper bounds on
+/// the `x` variables.
+/// `x0` is as optional starting value of optimization vector `x`.
+///
+/// Returns the solution vector `x`, the final objective function value `f`,
+/// an exit flag indicating if the solver converged, the number of iterations
+/// performed and a structure containing the Lagrange and Kuhn-Tucker
+/// multipliers on the constraints.
 pub fn qp<S>(
     h_mat: &CSR<usize, f64>,
     c: &[f64],
