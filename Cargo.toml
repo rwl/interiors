@@ -3,7 +3,7 @@ name = "interiors"
 description = "Primal-Dual Interior Point Method for Nonlinear Programming"
 version = "0.1.0"
 edition = "2021"
-license = "BSD-3"
+license = "BSD-3-Clause"
 repository = "https://github.com/rwl/interiors"
 
 [dependencies]
