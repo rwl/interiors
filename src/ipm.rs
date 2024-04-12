@@ -186,7 +186,7 @@ where
 
     debug!("f = {}, df = {:?}", f, df);
 
-    let (h, g, dh, dg): (Vec<f64>, Vec<f64>, CSR<usize, f64>, CSR<usize, f64>) =
+    let (mut h, mut g, mut dh, mut dg): (Vec<f64>, Vec<f64>, CSR<usize, f64>, CSR<usize, f64>) =
         if let Some(gh_fn) = nonlinear {
             let (hn, gn, dhn, dgn) = gh_fn.gh(&x, true); // nonlinear constraints
             let (dhn, dgn) = (dhn.unwrap(), dgn.unwrap());
@@ -566,6 +566,10 @@ where
         if niq > 0 {
             gamma = sigma * dot(&z, &mu) / (niq as f64);
         }
+        trace!("x = {:?}", x);
+        trace!("z = {:?}", z);
+        trace!("lam = {:?}", lam);
+        trace!("mu = {:?}", mu);
 
         // evaluate cost, constraints, derivatives
         (f, df, _) = f_fn.f(&x, false); // cost
@@ -574,36 +578,33 @@ where
 
         debug!("f = {}, df = {:?}", f, df);
 
-        let (h, g, dh, dg): (Vec<f64>, Vec<f64>, CSR<usize, f64>, CSR<usize, f64>) =
-            if let Some(gh_fn) = nonlinear {
-                let (hn, gn, dhn, dgn) = gh_fn.gh(&x, true); // nonlinear constraints
-                let (dhn, dgn) = (dhn.unwrap(), dgn.unwrap());
+        (h, g, dh, dg) = if let Some(gh_fn) = nonlinear {
+            let (hn, gn, dhn, dgn) = gh_fn.gh(&x, true); // nonlinear constraints
+            let (dhn, dgn) = (dhn.unwrap(), dgn.unwrap());
 
-                // inequality constraints
-                let h: Vec<f64> =
-                    [hn, zip(&ai_mat * &x, &bi).map(|(xi, bi)| xi - bi).collect()].concat();
-                // equality constraints
-                let g: Vec<f64> =
-                    [gn, zip(&ae_mat * &x, &be).map(|(xe, be)| xe - be).collect()].concat();
+            // inequality constraints
+            let h: Vec<f64> =
+                [hn, zip(&ai_mat * &x, &bi).map(|(xi, bi)| xi - bi).collect()].concat();
+            // equality constraints
+            let g: Vec<f64> =
+                [gn, zip(&ae_mat * &x, &be).map(|(xe, be)| xe - be).collect()].concat();
 
-                let dh: CSR<usize, f64> =
-                    Coo::h_stack(&dhn.to_coo(), &ai_mat.t().to_coo())?.to_csr(); // 1st derivative of inequalities
-                let dg: CSR<usize, f64> =
-                    Coo::h_stack(&dgn.to_coo(), &ae_mat.t().to_coo())?.to_csr(); // 1st derivative of equalities
+            let dh: CSR<usize, f64> = Coo::h_stack(&dhn.to_coo(), &ai_mat.t().to_coo())?.to_csr(); // 1st derivative of inequalities
+            let dg: CSR<usize, f64> = Coo::h_stack(&dgn.to_coo(), &ae_mat.t().to_coo())?.to_csr(); // 1st derivative of equalities
 
-                (h, g, dh, dg)
-            } else {
-                // inequality constraints
-                let h = zip(&ai_mat * &x, &bi).map(|(xi, bi)| xi - bi).collect();
-                // equality constraints
-                let g = zip(&ae_mat * &x, &be).map(|(xe, be)| xe - be).collect();
+            (h, g, dh, dg)
+        } else {
+            // inequality constraints
+            let h = zip(&ai_mat * &x, &bi).map(|(xi, bi)| xi - bi).collect();
+            // equality constraints
+            let g = zip(&ae_mat * &x, &be).map(|(xe, be)| xe - be).collect();
 
-                // 1st derivatives are constant, still dh = Ai', dg = Ae' TODO
-                let dh = ai_mat.t().to_csr(); // 1st derivative of inequalities
-                let dg = ae_mat.t().to_csr(); // 1st derivative of equalities
+            // 1st derivatives are constant, still dh = Ai', dg = Ae' TODO
+            let dh = ai_mat.t().to_csr(); // 1st derivative of inequalities
+            let dg = ae_mat.t().to_csr(); // 1st derivative of equalities
 
-                (h, g, dh, dg)
-            };
+            (h, g, dh, dg)
+        };
 
         l_x = zip(&df, &dg * &lam)
             .zip(&dh * &mu)

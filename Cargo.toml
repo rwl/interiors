@@ -18,5 +18,6 @@ num-complex = "0.4"
 [dev-dependencies]
 env_logger = "0.10"
 ctor = "0.2.7"
+float-cmp = "0.9"
 full = "0.1"
 spsolve = { version = "0.1", features = ["rlu"] }

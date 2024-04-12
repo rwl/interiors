@@ -27,21 +27,6 @@ impl ObjectiveFunction for Unconstrained3DQuadratic {
         (f, df.vec(), if hessian { Some(h) } else { None })
     }
 }
-/*
-/// Unconstrained 3-d quadratic from http://www.akiti.ca/QuadProgEx0Constr.html.
-fn f3(x: Array1<f64>, hessian: bool) -> (f64, Array1<f64>, Option<CsMat<f64>>) {
-    let h: sprs::CsMat<f64> = CsMatBase::csc_from_dense(
-        arr2(&[[5.0, -2.0, -1.0], [-2.0, 4.0, 3.0], [-1.0, 3.0, 5.0]]).view(),
-        0.0,
-    );
-    let c = arr1(&[2.0, -35.0, -47.0]);
-
-    let f = 0.5 * (&h.view() * &x.view()).dot(&x) + c.dot(&x) + 5.0;
-    let df = (&h.view() * &x.view()) + c;
-
-    (f, df, if hessian { Some(h) } else { None })
-}
-*/
 
 #[test]
 fn unconstrained_3d_quadratic() {

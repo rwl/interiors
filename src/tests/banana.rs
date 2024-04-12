@@ -35,32 +35,7 @@ impl ObjectiveFunction for UnconstrainedBananaFunction {
         }
     }
 }
-/*
-/// Unconstrained banana function from MATLAB Optimization Toolbox's `bandem.m`.
-fn f2(x: Array1<f64>, hessian: bool) -> (f64, Vec<f64>, Option<CsMat<f64>>) {
-    let a = 100.0;
-    let f = a * (x[1] - x[0].powi(2)).powi(2) + (1.0 - x[0]).powi(2);
-    let df = vec![
-        4.0 * a * (x[0].powi(3) - x[0] * x[1]) + 2.0 * x[0] - 2.0,
-        2.0 * a * (x[1] - x[0].powi(2)),
-    ];
 
-    if !hessian {
-        (f, df, None)
-    } else {
-        let d2f = CsMatBase::csc_from_dense(
-            arr2(&[
-                [3.0 * x[0].powi(2) - x[1] + 1.0 / (2.0 * a), -x[0]],
-                [-x[0], 0.5],
-            ])
-            .view(),
-            0.0,
-        );
-
-        (f, df, Some(d2f))
-    }
-}
-*/
 #[test]
 fn unconstrained_banana() {
     let x0 = vec![-1.9, 2.0];
