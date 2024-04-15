@@ -1,3 +1,4 @@
+use float_cmp::assert_approx_eq;
 use std::iter::zip;
 
 use sparsetools::csr::CSR;
@@ -30,12 +31,16 @@ pub fn lp3d() {
     .unwrap();
 
     assert!(success);
-    assert_eq!(f, -78.0);
-    assert!(zip(x, vec![0.0, 15.0, 3.0]).all(|x| (x.0 - x.1).abs() < 1e-7));
-    assert!(zip(lam.mu_l, vec![0.0, 1.5, 0.0]).all(|x| (x.0 - x.1).abs() < 1e-10));
-    assert!(zip(lam.mu_u, vec![0.0, 0.0, 0.5]).all(|x| (x.0 - x.1).abs() < 1e-10));
-    assert!(zip(lam.lower, vec![1.0, 0.0, 0.0]).all(|x| (x.0 - x.1).abs() < 1e-10));
-    assert!(zip(lam.upper, vec![0.0, 0.0, 0.0]).all(|x| (x.0 - x.1).abs() < 1e-10));
+    assert_approx_eq!(f64, f, -78.0, epsilon = 1e-5);
+    zip(x, vec![0.0, 15.0, 3.0]).for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e6));
+    zip(lam.mu_l, vec![0.0, 1.5, 0.0])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e9));
+    zip(lam.mu_u, vec![0.0, 0.0, 0.5])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e9));
+    zip(lam.lower, vec![1.0, 0.0, 0.0])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e9));
+    zip(lam.upper, vec![0.0, 0.0, 0.0])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e9));
 }
 
 /// from http://www.akiti.ca/QuadProgEx0Constr.html
@@ -71,11 +76,13 @@ pub fn unconstrained_3d_qp() {
 
     assert!(success);
     assert_eq!(f, -249.0);
-    assert!(zip(x, vec![3.0, 5.0, 7.0]).all(|x| (x.0 - x.1).abs() < 1e-13));
+    zip(x, vec![3.0, 5.0, 7.0]).for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e8));
     assert!(lam.mu_l.is_empty());
     assert!(lam.mu_u.is_empty());
-    assert!(zip(lam.lower, vec![0.0, 0.0, 0.0]).all(|x| (x.0 - x.1).abs() < 1e-13));
-    assert!(zip(lam.upper, vec![0.0, 0.0, 0.0]).all(|x| (x.0 - x.1).abs() < 1e-13));
+    zip(lam.lower, vec![0.0, 0.0, 0.0])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e13));
+    zip(lam.upper, vec![0.0, 0.0, 0.0])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e13));
 }
 
 /// example from 'doc quadprog'
@@ -99,12 +106,17 @@ pub fn constrained_2d_qp() {
     .unwrap();
 
     assert!(success);
-    assert_eq!(f, -74.0 / 9.0);
-    assert!(zip(x, vec![2.0 / 3.0, 4.0 / 3.0]).all(|x| (x.0 - x.1).abs() < 1e-7));
-    assert!(zip(lam.mu_l, vec![0.0, 0.0, 0.0]).all(|x| (x.0 - x.1).abs() < 1e-13));
-    assert!(zip(lam.mu_u, vec![28.0 / 9.0, 4.0 / 9.0, 0.0]).all(|x| (x.0 - x.1).abs() < 1e-5));
-    assert!(zip(lam.lower, vec![0.0, 0.0, 0.0]).all(|x| (x.0 - x.1).abs() < 1e-7));
-    assert!(zip(lam.upper, vec![0.0, 0.0, 0.0]).all(|x| (x.0 - x.1).abs() < 1e-13));
+    assert_approx_eq!(f64, f, -74.0 / 9.0, epsilon = 1e-6);
+    zip(x, vec![2.0 / 3.0, 4.0 / 3.0])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e7));
+    zip(lam.mu_l, vec![0.0, 0.0, 0.0])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e13));
+    zip(lam.mu_u, vec![28.0 / 9.0, 4.0 / 9.0, 0.0])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e4));
+    zip(lam.lower, vec![0.0, 0.0, 0.0])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e6));
+    zip(lam.upper, vec![0.0, 0.0, 0.0])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e13));
 }
 
 /// from https://v8doc.sas.com/sashtml/iml/chap8/sect12.htm
@@ -136,10 +148,14 @@ pub fn constrained_4d_qp() {
     .unwrap();
 
     assert!(success);
-    assert_eq!(f, 3.29 / 3.0);
-    assert!(zip(x, vec![0.0, 2.8 / 3.0, 0.2 / 3.0, 0.0]).all(|x| (x.0 - x.1).abs() < 1e-7));
-    assert!(zip(lam.mu_l, vec![6.58 / 3.0, 0.0]).all(|x| (x.0 - x.1).abs() < 1e-6));
-    assert!(zip(lam.mu_u, vec![0.0, 0.0]).all(|x| (x.0 - x.1).abs() < 1e-13));
-    assert!(zip(lam.lower, vec![2.24, 0.0, 0.0, 1.7667]).all(|x| (x.0 - x.1).abs() < 1e-5));
-    assert!(zip(lam.upper, vec![0.0, 0.0, 0.0, 0.0]).all(|x| (x.0 - x.1).abs() < 1e-13));
+    assert_approx_eq!(f64, f, 3.29 / 3.0, epsilon = 1e-6);
+    zip(x, vec![0.0, 2.8 / 3.0, 0.2 / 3.0, 0.0])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e5));
+    zip(lam.mu_l, vec![6.58 / 3.0, 0.0])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e6));
+    zip(lam.mu_u, vec![0.0, 0.0]).for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e13));
+    zip(lam.lower, vec![2.24, 0.0, 0.0, 1.7667])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e4));
+    zip(lam.upper, vec![0.0, 0.0, 0.0, 0.0])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e13));
 }

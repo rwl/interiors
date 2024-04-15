@@ -45,8 +45,10 @@ pub struct Options {
     pub max_it: usize,
 
     /// Set to enable step-size control.
+    #[cfg(feature = "step-control")]
     pub step_control: bool,
     /// Maximum number of step-size reductions if step-control is on.
+    #[cfg(feature = "step-control")]
     pub max_red: usize,
 
     /// Cost multiplier used to scale the objective function for improved
@@ -66,8 +68,10 @@ pub struct Options {
     /// Exits if either alpha parameter becomes smaller than this value.
     pub alpha_min: f64,
     /// Lower bound on rho_t.
+    #[cfg(feature = "step-control")]
     pub rho_min: f64,
     /// Upper bound on rho_t.
+    #[cfg(feature = "step-control")]
     pub rho_max: f64,
     /// KT multipliers smaller than this value for non-binding constraints are forced to zero.
     pub mu_threshold: f64,
@@ -85,7 +89,9 @@ impl Default for Options {
 
             max_it: 150,
 
+            #[cfg(feature = "step-control")]
             step_control: false,
+            #[cfg(feature = "step-control")]
             max_red: 20,
 
             cost_mult: 1.0,
@@ -94,7 +100,9 @@ impl Default for Options {
             sigma: 0.1,
             z0: 1.0,
             alpha_min: 1e-8,
+            #[cfg(feature = "step-control")]
             rho_min: 0.95,
+            #[cfg(feature = "step-control")]
             rho_max: 1.05,
             mu_threshold: 1e-5,
             max_step_size: 1e10,

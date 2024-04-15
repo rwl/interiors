@@ -1,3 +1,4 @@
+use float_cmp::assert_approx_eq;
 use std::iter::zip;
 
 use full::Mat;
@@ -38,7 +39,7 @@ impl NonlinearConstraint for Constrained2DNonlinear {
         Option<CSR<usize, f64>>,
         Option<CSR<usize, f64>>,
     ) {
-        let x2: Vec<f64> = x.iter().map(|v| v.powi(3)).collect();
+        let x2: Vec<f64> = x.iter().map(|v| v.powi(2)).collect();
 
         let h0 = Mat::new(2, 2, vec![-1.0, -1.0, 1.0, 1.0]).mat_vec(&x2);
         let h = zip(h0, vec![1.0, -2.0]).map(|(a, b)| a + b).collect();
@@ -60,35 +61,6 @@ impl NonlinearConstraint for Constrained2DNonlinear {
         l_xx
     }
 }
-
-/*
-fn f5(x: Array1<f64>, hessian: bool) -> (f64, Array1<f64>, Option<CsMat<f64>>) {
-    let c = -arr1(&[1.0, 1.0]);
-
-    let f = c.dot(&x);
-    let df = c;
-
-    if !hessian {
-        (f, df, None)
-    } else {
-        let d2f = CsMatBase::zero((2, 2));
-        (f, df, Some(d2f))
-    }
-}
-
-fn gh5(x: Array1<f64>) -> (Array1<f64>, Array1<f64>, CsMat<f64>, CsMat<f64>) {
-    let x2: Array1<f64> = x.mapv(|v| v.powi(3));
-
-    let h = arr2(&[[-1.0, -1.0], [1.0, 1.0]]).dot(&x2) + arr1(&[1.0, -2.0]);
-    let mut dh = CsMatBase::csc_from_dense(arr2(&[[-x[0], x[0]], [-x[1], x[1]]]).view(), 0.0);
-    dh.scale(2.0);
-
-    let g = arr1(&[]);
-    let dg = CsMatBase::zero((0, 0));
-
-    (h, g, dh, dg)
-}
-*/
 
 #[test]
 fn constrained_2d_nonlinear() {
@@ -117,7 +89,12 @@ fn constrained_2d_nonlinear() {
     .unwrap();
 
     assert!(converged);
-    assert_eq!(f, -2.0);
-    assert!(zip(x, vec![1.0, 1.0]).all(|x| (x.0 - x.1).abs() < 1e-7));
-    assert!(zip(lambda.ineq_non_lin, vec![0.0, 0.5]).all(|x| (x.0 - x.1).abs() < 1e-7));
+    assert_approx_eq!(f64, f, -2.0, epsilon = 1e-6);
+    zip(x, vec![1.0, 1.0]).for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e-6));
+    zip(lambda.ineq_non_lin, vec![0.0, 0.5])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e-6));
+    assert!(lambda.mu_l.is_empty());
+    assert!(lambda.mu_u.is_empty());
+    assert!(lambda.lower.iter().all(|&x| x == 0.0));
+    assert!(lambda.upper.iter().all(|&x| x == 0.0));
 }

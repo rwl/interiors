@@ -39,8 +39,6 @@ impl ObjectiveFunction for UnconstrainedBananaFunction {
 #[test]
 fn unconstrained_banana() {
     let x0 = vec![-1.9, 2.0];
-    // let (f, _df, _d2f) = f2(x0, false);
-    // println!("{}", f);
     let f2 = UnconstrainedBananaFunction {};
 
     let size = 2;

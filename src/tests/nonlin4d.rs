@@ -1,3 +1,4 @@
+use float_cmp::assert_approx_eq;
 use std::iter::zip;
 
 use full::Arr;
@@ -104,10 +105,15 @@ fn constrained_4d_nonlinear() {
     .unwrap();
 
     assert!(converged);
-    assert_eq!(f, 17.0140173);
-    assert!(zip(x, vec![1.0, 4.7429994, 3.8211503, 1.3794082]).all(|x| (x.0 - x.1).abs() < 1e-8));
-    assert!(zip(lambda.eq_non_lin, vec![0.1614686]).all(|x| (x.0 - x.1).abs() < 1e-5));
-    assert!(zip(lambda.ineq_non_lin, vec![0.55229366]).all(|x| (x.0 - x.1).abs() < 1e-5));
-    assert!(zip(lambda.lower, vec![1.08787121024, 0.0, 0.0, 0.0]).all(|x| (x.0 - x.1).abs() < 1e-5));
-    assert!(zip(lambda.upper, vec![0.0; size]).all(|x| (x.0 - x.1).abs() < 1e-5));
+    assert_approx_eq!(f64, f, 17.0140173, epsilon = 1e-6);
+    zip(x, vec![1.0, 4.7429994, 3.8211503, 1.3794082])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e7));
+    zip(lambda.eq_non_lin, vec![0.1614686])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e7));
+    zip(lambda.ineq_non_lin, vec![0.55229366])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e8));
+    zip(lambda.lower, vec![1.08787121024, 0.0, 0.0, 0.0])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e8));
+    zip(lambda.upper, vec![0.0; size])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e8));
 }

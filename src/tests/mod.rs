@@ -10,7 +10,8 @@ mod quad4d;
 #[ctor::ctor]
 fn init() {
     env_logger::Builder::new()
-        .filter_level(log::LevelFilter::Debug)
+        .filter_level(log::LevelFilter::Info)
+        // .filter_level(log::LevelFilter::Debug)
         // .filter_level(log::LevelFilter::Trace)
         .format_module_path(false)
         .format_timestamp(None)

@@ -21,3 +21,9 @@ ctor = "0.2.7"
 float-cmp = "0.9"
 full = "0.1"
 spsolve = { version = "0.1", features = ["rlu"] }
+
+[features]
+step-control = []
+
+[package.metadata.docs.rs]
+all-features = true

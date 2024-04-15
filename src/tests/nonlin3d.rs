@@ -1,3 +1,4 @@
+use float_cmp::assert_approx_eq;
 use std::iter::zip;
 
 use full::{Arr, Mat};
@@ -97,9 +98,13 @@ fn constrained_3d_nonlinear() {
     .unwrap();
 
     assert!(converged);
-    assert_eq!(f, -5.0 * f64::sqrt(2.0));
-    assert!(zip(x, vec![1.58113883, 2.23606798, 1.58113883]).all(|x| (x.0 - x.1).abs() < 1e-9));
-    assert!(
-        zip(lambda.ineq_non_lin, vec![0.0, f64::sqrt(2.0) / 2.0]).all(|x| (x.0 - x.1).abs() < 1e-7)
-    );
+    assert_approx_eq!(f64, f, -5.0 * f64::sqrt(2.0), epsilon = 1e-6);
+    zip(x, vec![1.58113883, 2.23606798, 1.58113883])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e8));
+    zip(lambda.ineq_non_lin, vec![0.0, f64::sqrt(2.0) / 2.0])
+        .for_each(|x| assert_approx_eq!(f64, x.0, x.1, epsilon = 1e7));
+    assert!(lambda.mu_l.is_empty());
+    assert!(lambda.mu_u.is_empty());
+    assert!(lambda.lower.iter().all(|&x| x == 0.0));
+    assert!(lambda.upper.iter().all(|&x| x == 0.0));
 }

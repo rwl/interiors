@@ -94,17 +94,12 @@ where
     //     None => vec![f64::INFINITY; nx], // ... unbounded above.
     // };
 
-    let gn = Vec::<f64>::default();
-    let hn = Vec::<f64>::default();
-
     // Set up problem
-    let (xi, sigma, z0, alpha_min, rho_min, rho_max, mu_threshold, max_step_size) = (
+    let (xi, sigma, z0, alpha_min, mu_threshold, max_step_size) = (
         opt.xi,
         opt.sigma,
         opt.z0,
         opt.alpha_min,
-        opt.rho_min,
-        opt.rho_max,
         opt.mu_threshold,
         opt.max_step_size,
     );
@@ -118,6 +113,9 @@ where
         "xi = {}, sigma = {}, z0 = {}, max_step_size = {:e}",
         xi, sigma, z0, max_step_size
     );
+    #[cfg(feature = "step-control")]
+    let (rho_min, rho_max) = (opt.rho_min, opt.rho_max);
+    #[cfg(feature = "step-control")]
     if opt.step_control {
         debug!(
             "step control enabled: rho_min = {}, rho_max = {}",
@@ -140,11 +138,14 @@ where
         let (li, ui) = (ll[i], uu[i]);
         if (ui - li).abs() <= f64::EPSILON {
             ieq.push(i);
-        } else if ui >= 1e-10 && li > -1e-10 {
+        }
+        if ui >= 1e10 && li > -1e10 {
             igt.push(i);
-        } else if li <= -1e-10 && ui < 1e10 {
+        }
+        if li <= -1e10 && ui < 1e10 {
             ilt.push(i);
-        } else if ((ui - li).abs() > f64::EPSILON) && (ui < 1e10) && (li > -1e10) {
+        }
+        if ((ui - li).abs() > f64::EPSILON) && (ui < 1e10) && (li > -1e10) {
             ibx.push(i);
         }
     }
@@ -186,29 +187,44 @@ where
 
     debug!("f = {}, df = {:?}", f, df);
 
-    let (mut h, mut g, mut dh, mut dg): (Vec<f64>, Vec<f64>, CSR<usize, f64>, CSR<usize, f64>) =
-        if let Some(gh_fn) = nonlinear {
-            let (hn, gn, dhn, dgn) = gh_fn.gh(&x, true); // nonlinear constraints
-            let (dhn, dgn) = (dhn.unwrap(), dgn.unwrap());
+    let (hn, gn, mut h, mut g, mut dh, mut dg): (
+        Vec<f64>,
+        Vec<f64>,
+        Vec<f64>,
+        Vec<f64>,
+        CSR<usize, f64>,
+        CSR<usize, f64>,
+    ) = if let Some(gh_fn) = nonlinear {
+        let (hn, gn, dhn, dgn) = gh_fn.gh(&x, true); // nonlinear constraints
+        let (dhn, dgn) = (dhn.unwrap(), dgn.unwrap());
 
-            let h: Vec<f64> =
-                [hn, zip(&ai_mat * &x, &bi).map(|(xi, bi)| xi - bi).collect()].concat(); // inequality constraints
-            let g: Vec<f64> =
-                [gn, zip(&ae_mat * &x, &be).map(|(xe, be)| xe - be).collect()].concat(); // equality constraints
+        let h: Vec<f64> = [
+            hn.clone(),
+            zip(&ai_mat * &x, &bi).map(|(xi, bi)| xi - bi).collect(),
+        ]
+        .concat(); // inequality constraints
+        let g: Vec<f64> = [
+            gn.clone(),
+            zip(&ae_mat * &x, &be).map(|(xe, be)| xe - be).collect(),
+        ]
+        .concat(); // equality constraints
 
-            let dh: CSR<usize, f64> = Coo::h_stack(&dhn.to_coo(), &ai_mat.t().to_coo())?.to_csr(); // 1st derivative of inequalities
-            let dg: CSR<usize, f64> = Coo::h_stack(&dgn.to_coo(), &ae_mat.t().to_coo())?.to_csr(); // 1st derivative of equalities
+        let dh: CSR<usize, f64> = Coo::h_stack(&dhn.to_coo(), &ai_mat.t().to_coo())?.to_csr(); // 1st derivative of inequalities
+        let dg: CSR<usize, f64> = Coo::h_stack(&dgn.to_coo(), &ae_mat.t().to_coo())?.to_csr(); // 1st derivative of equalities
 
-            (h, g, dh, dg)
-        } else {
-            let h = zip(&ai_mat * &x, &bi).map(|(xi, bi)| xi - bi).collect(); // inequality constraints
-            let g = zip(&ae_mat * &x, &be).map(|(xe, be)| xe - be).collect(); // equality constraints
+        (hn, gn, h, g, dh, dg)
+    } else {
+        let gn = Vec::<f64>::default();
+        let hn = Vec::<f64>::default();
 
-            let dh = ai_mat.t().to_csr(); // 1st derivative of inequalities
-            let dg = ae_mat.t().to_csr(); // 1st derivative of equalities
+        let h = zip(&ai_mat * &x, &bi).map(|(xi, bi)| xi - bi).collect(); // inequality constraints
+        let g = zip(&ae_mat * &x, &be).map(|(xe, be)| xe - be).collect(); // equality constraints
 
-            (h, g, dh, dg)
-        };
+        let dh = ai_mat.t().to_csr(); // 1st derivative of inequalities
+        let dg = ae_mat.t().to_csr(); // 1st derivative of equalities
+
+        (hn, gn, h, g, dh, dg)
+    };
 
     // Grab some dimensions.
     let neq = g.len(); // number of equality constraints
@@ -261,6 +277,7 @@ where
 
     // check tolerance
     let mut f0 = f;
+    #[cfg(feature = "step-control")]
     let mut l_step: f64 = if opt.step_control {
         let hz: Vec<f64> = zip(&h, &z).map(|(&h, &z)| h + z).collect();
         let z_ln_sum: f64 = z.iter().map(|z| z.ln()).sum();
@@ -274,6 +291,7 @@ where
         .zip(&dh * &mu)
         .map(|((df, dg_lam), dh_mu)| df + dg_lam + dh_mu)
         .collect();
+    trace!("Lx = {:?}", l_x);
 
     let feascond = match max(&h) {
         None => norm_inf(&g) / (1.0 + f64::max(norm_inf(&x), norm_inf(&z))),
@@ -351,10 +369,6 @@ where
         };
 
         let dxdlam = {
-            // let a_mat: CSR<usize, f64> = vstack(&[
-            //     hstack(&[m_mat.view(), dg.view()]).view(),
-            //     hstack(&[dg.transpose_view(), CsMatBase::zero((neq, neq)).view()]).view(),
-            // ]);
             let a_mat: CSC<usize, f64> = Coo::compose([
                 [&m_mat.to_coo(), &dg.to_coo()],
                 [&dg.t().to_coo(), &Coo::with_size(neq, neq)],
@@ -365,7 +379,6 @@ where
                 g.iter().map(|g| -g).collect::<Vec<f64>>(),
             ]
             .concat();
-            // solver.solve(&a_mat, &mut b)?;
             solver.solve(
                 a_mat.cols(),
                 &a_mat.rowidx(),
@@ -381,22 +394,28 @@ where
             break;
         }
         // let mut dx: Vec<f64> = (0..nx).map(|i| dxdlam[i]).collect();
-        let mut dx = dxdlam[0..nx].to_vec();
+        let dx = dxdlam[0..nx].to_vec();
+        #[cfg(feature = "step-control")]
+        let mut dx = dx;
         trace!("dx = {:?}", dx);
 
         // let mut dlam: Vec<f64> = (nx..(nx + neq)).map(|i| dxdlam[i]).collect();
-        let mut dlam = dxdlam[nx..(nx + neq)].to_vec();
+        let dlam = dxdlam[nx..(nx + neq)].to_vec();
+        #[cfg(feature = "step-control")]
+        let mut dlam = dlam;
         trace!("dlam = {:?}", dlam);
 
         // dz = -h - z - dh' * dx;
-        let mut dz: Vec<f64> = zip(&h, &z)
+        let dz: Vec<f64> = zip(&h, &z)
             .zip(&dh.t().to_csr() * &dx) // fixme: to_csr()
             .map(|((h, z), dh_dx)| -h - z - dh_dx)
             .collect();
+        #[cfg(feature = "step-control")]
+        let mut dz = dz;
         trace!("dz = {:?}", dz);
 
         // dmu = -mu + zinvdiag *(gamma*e - mudiag * dz);
-        let mut dmu: Vec<f64> = {
+        let dmu: Vec<f64> = {
             let temp: Vec<f64> = zip(&e, &mudiag * &dz)
                 .map(|(e, mudiag_dz)| gamma * e - mudiag_dz)
                 .collect();
@@ -405,9 +424,12 @@ where
                 .map(|(mu, zinvdiag_temp)| -mu + zinvdiag_temp)
                 .collect()
         };
+        #[cfg(feature = "step-control")]
+        let mut dmu = dmu;
         trace!("dmu = {:?}", dmu);
 
         // Optional step-size control.
+        #[cfg(feature = "step-control")]
         let sc = if opt.step_control {
             let x1: Vec<f64> = zip(&x, &dx).map(|(x, dx)| x + dx).collect();
 
@@ -472,6 +494,7 @@ where
         } else {
             false
         };
+        #[cfg(feature = "step-control")]
         if sc {
             let mut alpha = 1.0;
             for j in 0..opt.max_red {
@@ -660,6 +683,7 @@ where
             }
 
             f0 = f;
+            #[cfg(feature = "step-control")]
             if opt.step_control {
                 l_step = {
                     let hz: Vec<f64> = zip(&h, &z).map(|(&h, &z)| h + z).collect();
